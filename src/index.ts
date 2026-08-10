@@ -7,8 +7,9 @@
 // readers, not part of the API.
 
 export { anchorText } from "./anchorText.ts";
+export { type Config, config, configFrom, VERSION } from "./config.ts";
 export { deepFreeze } from "./deepFreeze.ts";
-export { DEFAULT_UA, download } from "./download.ts";
+export { download } from "./download.ts";
 export { downloadSections } from "./downloadSections.ts";
 export { epubIdentity } from "./epubIdentity.ts";
 export { epubToAnchored } from "./epubToAnchored.ts";
@@ -29,11 +30,10 @@ export { paragraphs } from "./paragraphs.ts";
 export { probeSecs } from "./probeSecs.ts";
 export { rows } from "./rows.ts";
 export { runAligner, workerPath } from "./runAligner.ts";
-export { GENERATOR, saveDoc, VERSION } from "./saveDoc.ts";
+export { GENERATOR, saveDoc } from "./saveDoc.ts";
 export { samePageHref } from "./samePageHref.ts";
 export { sha256 } from "./sha256.ts";
 export { slugify } from "./slugify.ts";
-export { STREAM_SECS } from "./STREAM_SECS.ts";
 export {
   DOC_FILE,
   type Doc,

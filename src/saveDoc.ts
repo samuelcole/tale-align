@@ -1,9 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { VERSION } from "./config.ts";
 import { DOC_FILE, type Doc } from "./types/Doc.ts";
-
-// Keep in step with package.json's version — bumped as part of each release.
-export const VERSION = "0.2.0";
 /** Runtime provenance: which build wrote this document. It lives with the
  *  writer that stamps it, not with the type — the shape a consumer reads is
  *  `FORMAT`, and that is the thing versioned in ./types/Doc.ts. */

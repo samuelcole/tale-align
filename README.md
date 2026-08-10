@@ -101,6 +101,18 @@ node dist/cli.js export      --dir work/sleepy-hollow --out sleepy-hollow.epub
 On Apple Silicon the forward pass runs on the Metal GPU (~100× realtime,
 auto-detected); CPU aligns at ~20×.
 
+## Configuration
+
+Operational knobs live in `tale-align/config`, read from the environment
+once at load (the gates are deliberately not configuration — see
+`src/gate.ts`):
+
+| variable | default | what |
+| --- | --- | --- |
+| `ALIGN_PYTHON` | `python3` | the aligner venv's interpreter |
+| `TALE_ALIGN_STREAM_SECS` | `54000` | audio length above which the worker streams its emission to disk instead of RAM — tune to your memory |
+| `TALE_ALIGN_UA` | `tale-align/<version> (+repo url)` | the user-agent on every fetch against gutenberg.org / librivox.org / archive.org — put your own name on your traffic |
+
 ## How the aligner works
 
 Two global phases, no per-section state to lose (the worker's docstring in

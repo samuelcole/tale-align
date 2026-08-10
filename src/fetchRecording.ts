@@ -11,7 +11,7 @@ import type {
   LibriVoxSection,
 } from "./types/LibriVoxRecording.ts";
 
-const UA = "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
+import { config } from "./config.ts";
 
 /** The slice of LibriVox's extended feed shape this module actually reads. */
 type LvFeed = {
@@ -38,7 +38,7 @@ function normalizeListenUrl(url: string): string {
 /** Fetch one LibriVox recording's identity and ordered sections. */
 export async function fetchRecording(id: string): Promise<LibriVoxRecording> {
   const feedUrl = `https://librivox.org/api/feed/audiobooks/?format=json&extended=1&id=${id}`;
-  const res = await fetch(feedUrl, { headers: { "user-agent": UA } });
+  const res = await fetch(feedUrl, { headers: { "user-agent": config.ua } });
   if (!res.ok) {
     throw new Error(`librivox HTTP ${res.status}`);
   }

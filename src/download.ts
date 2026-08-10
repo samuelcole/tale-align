@@ -1,8 +1,5 @@
 import { writeFile } from "node:fs/promises";
-
-/** Default UA for audio downloads — callers can override it. */
-export const DEFAULT_UA =
-  "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
+import { config } from "./config.ts";
 
 /**
  * Pull one audio file down to a local path, patiently and under our own name.
@@ -16,7 +13,7 @@ export async function download(
   ua?: string,
 ): Promise<void> {
   const res = await fetch(url, {
-    headers: { "user-agent": ua ?? DEFAULT_UA },
+    headers: { "user-agent": ua ?? config.ua },
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok) {

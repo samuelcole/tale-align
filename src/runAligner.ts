@@ -16,14 +16,15 @@
  * object-storage upload step here: the on-disk interchange document
  * (./types/Doc.ts) is the archive.
  *
- * The interpreter is ALIGN_PYTHON (default `python3`) — the aligner wants its
- * own venv, and where that venv is depends entirely on whose machine this is
- * running on; see requirements.txt for what it needs.
+ * The interpreter comes from ./config.ts (`ALIGN_PYTHON`, default `python3`) —
+ * the aligner wants its own venv, and where that venv is depends entirely on
+ * whose machine this is running on; see requirements.txt for what it needs.
  */
 
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { text } from "node:stream/consumers";
+import { config } from "./config.ts";
 import { deepFreeze } from "./deepFreeze.ts";
 import type { Fragment } from "./types/Fragment.ts";
 import type { WorkerOut } from "./types/WorkerOut.ts";
@@ -38,7 +39,7 @@ export function workerPath(): string {
 
 /** Run the Python aligner on a prepared job; resolve its parsed sync map.
  *  `stream` tells the worker to keep a giant's emission on disk (see
- *  STREAM_SECS in ./STREAM_SECS.ts); `model` selects the acoustic backend —
+ *  `config.streamSecs` in ./config.ts); `model` selects the acoustic backend —
  *  "wav2vec2" (MIT, English-only, the default: the whole default pipeline
  *  stays commercially clean) or "mms_fa" (Meta's multilingual aligner,
  *  CC-BY-NC 4.0, usually somewhat stronger — an explicit opt-in). Either
@@ -49,7 +50,7 @@ export async function runAligner(
   sections: string[],
   opts?: { python?: string; stream?: boolean; model?: string },
 ): Promise<WorkerOut> {
-  const python = opts?.python ?? process.env.ALIGN_PYTHON ?? "python3";
+  const python = opts?.python ?? config.python;
   const proc = spawn(python, [workerPath()], {
     stdio: ["pipe", "pipe", "inherit"],
   });

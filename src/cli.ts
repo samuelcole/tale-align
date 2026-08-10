@@ -46,7 +46,7 @@ import { runAligner } from "./runAligner.ts";
 import { saveDoc } from "./saveDoc.ts";
 import { sha256 } from "./sha256.ts";
 import { slugify } from "./slugify.ts";
-import { STREAM_SECS } from "./STREAM_SECS.ts";
+import { config } from "./config.ts";
 import type { Doc, SectionEntry } from "./types/Doc.ts";
 
 const argv = process.argv.slice(2);
@@ -297,7 +297,7 @@ async function cmdAlign() {
     doc.audio.sections.map((s) => path.join(dir, s.file)),
     {
       python: val("python"),
-      stream: totalSecs > STREAM_SECS,
+      stream: totalSecs > config.streamSecs,
       model,
     },
   );

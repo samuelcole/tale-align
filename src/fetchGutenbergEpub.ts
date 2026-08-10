@@ -1,4 +1,4 @@
-const UA = "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
+import { config } from "./config.ts";
 
 /**
  * Fetch a book's epub from Gutenberg's own cache mirror. Most books ship an
@@ -9,7 +9,7 @@ export async function fetchGutenbergEpub(id: string): Promise<Buffer> {
   for (const name of [`pg${id}-images.epub`, `pg${id}.epub`]) {
     const res = await fetch(
       `https://www.gutenberg.org/cache/epub/${id}/${name}`,
-      { headers: { "user-agent": UA } },
+      { headers: { "user-agent": config.ua } },
     );
     if (res.ok) {
       return Buffer.from(await res.arrayBuffer());

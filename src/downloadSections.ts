@@ -15,7 +15,6 @@ import { probeSecs } from "./probeSecs.ts";
 import type { SectionEntry } from "./types/Doc.ts";
 import type { LibriVoxRecording } from "./types/LibriVoxRecording.ts";
 
-const UA = "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function isNonEmptyFile(file: string): Promise<boolean> {
@@ -53,11 +52,11 @@ export async function downloadSections(
 
       if (!(await isNonEmptyFile(file))) {
         try {
-          await download(section.listenUrl, file, label, UA);
+          await download(section.listenUrl, file, label);
         } catch {
           // archive.org's per-item nodes are occasionally cold; one retry
           // covers a transient miss, a second failure is a real problem.
-          await download(section.listenUrl, file, label, UA);
+          await download(section.listenUrl, file, label);
         }
         // Gentle pacing between downloads — archive.org is a shared public
         // resource, not a CDN.
