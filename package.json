@@ -24,7 +24,8 @@
   },
   "files": [
     "dist",
-    "worker"
+    "worker",
+    "FORMAT.md"
   ],
   "scripts": {
     "build": "tsc",
