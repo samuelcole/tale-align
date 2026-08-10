@@ -1,0 +1,21 @@
+name: test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # zip: the epub layout step shells out to it. ffmpeg: probeSecs and the
+      # duration fixtures. The aligner's python venv is NOT needed here — the
+      # unit suite never runs the acoustic model.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg zip
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test:coverage

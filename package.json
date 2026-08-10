@@ -22,7 +22,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc",
+    "test": "node --test test/*.test.ts",
+    "test:coverage": "node --test --experimental-test-coverage test/*.test.ts"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",

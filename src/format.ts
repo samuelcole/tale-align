@@ -113,8 +113,9 @@ export async function loadDoc(dir: string): Promise<Doc> {
 }
 
 /** Compact on purpose: the words map for a novel runs to megabytes, and this
- *  file is a machine transport — FORMAT.md is the human-readable half. */
+ *  file is a machine transport — FORMAT.md is the human-readable half. The
+ *  generator stamp goes on the written document, not the caller's object. */
 export async function saveDoc(dir: string, doc: Doc): Promise<void> {
-  doc.generator = GENERATOR;
-  await writeFile(path.join(dir, DOC_FILE), `${JSON.stringify(doc)}\n`);
+  const stamped = { ...doc, generator: GENERATOR };
+  await writeFile(path.join(dir, DOC_FILE), `${JSON.stringify(stamped)}\n`);
 }
