@@ -8,9 +8,10 @@ import { after, before, test } from "node:test";
 import { promisify } from "node:util";
 import AdmZip from "adm-zip";
 import * as cheerio from "cheerio";
-import { exportEpub } from "../src/epub.ts";
-import { type Doc, saveDoc } from "../src/format.ts";
-import { probeSecs } from "../src/worker.ts";
+import { exportEpub } from "../src/exportEpub.ts";
+import { probeSecs } from "../src/probeSecs.ts";
+import { saveDoc } from "../src/saveDoc.ts";
+import type { Doc } from "../src/types/Doc.ts";
 
 const execFileAsync = promisify(execFile);
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");

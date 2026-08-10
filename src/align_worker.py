@@ -51,7 +51,7 @@ I/O — a JSON job on stdin, the sync map as JSON on stdout (logs go to stderr):
 
 Env: python 3.12, torch + torchaudio (model weights auto-download on first
 use: wav2vec2 ~360MB, MMS_FA ~1.2GB), soundfile, and ffmpeg on PATH. See
-worker/requirements.txt.
+requirements.txt.
 """
 
 import atexit

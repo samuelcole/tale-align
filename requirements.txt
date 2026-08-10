@@ -1,4 +1,4 @@
-# Forced-alignment worker (worker/align_worker.py).
+# Forced-alignment worker (src/align_worker.py).
 # torch/torchaudio bundle the MMS_FA forced-alignment model (~1.2GB, cached on
 # first run). soundfile reads the decoded audio; ffmpeg must also be on PATH.
 torch>=2.11

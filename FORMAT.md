@@ -135,7 +135,7 @@ the exact artifact this format exists to prevent.
 
 **`verdict` is load-bearing.** Alignment is cheap to produce and easy to
 produce *wrong*; the five gates (documented with their reasoning in
-`src/core.ts`) decide whether this alignment is trustworthy enough to ship.
+`src/gate.ts`) decide whether this alignment is trustworthy enough to ship.
 A document whose `verdict.pass` is `false` still carries its data — "tried,
 refused, and here is which bar it missed" is a useful record — but a
 consumer must not present it to a reader/listener as a working read-along.

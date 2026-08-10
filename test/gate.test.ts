@@ -1,71 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  gateRefusal,
+  judge,
   MAX_LEAD_S,
   MAX_TAIL_S,
   MIN_COVERAGE,
   MIN_MEDIAN_CONF,
-  gateRefusal,
-  judge,
-  paragraphs,
-  rows,
-  type WorkerOut,
-} from "../src/core.ts";
-
-// ---------------------------------------------------------------------------
-// paragraphs()
-// ---------------------------------------------------------------------------
-
-test("paragraphs() extracts [id, text] pairs in document order", () => {
-  const body =
-    '<p id="p-z">First paragraph here</p><p id="p-a">Second paragraph here</p>';
-  assert.deepEqual(paragraphs(body), [
-    ["p-z", "First paragraph here"],
-    ["p-a", "Second paragraph here"],
-  ]);
-});
-
-test("paragraphs() strips inner tags from the paragraph text", () => {
-  const body = '<p id="p1">Hello <em>brave</em> <strong>new</strong> world</p>';
-  assert.deepEqual(paragraphs(body), [["p1", "Hello brave new world"]]);
-});
-
-test("paragraphs() decodes numeric entities", () => {
-  const body = '<p id="p1">It&#8217;s a test</p>';
-  assert.deepEqual(paragraphs(body), [["p1", "It’s a test"]]);
-});
-
-test("paragraphs() decodes &amp; &lt; &gt;", () => {
-  const body = '<p id="p1">Fish &amp; chips &lt;tag&gt; end</p>';
-  assert.deepEqual(paragraphs(body), [["p1", "Fish & chips <tag> end"]]);
-});
-
-test("paragraphs() replaces other named entities with a space", () => {
-  const body = '<p id="p1">before &nbsp; and &mdash; after words</p>';
-  // &nbsp; and &mdash; both collapse to whitespace, then whitespace itself
-  // collapses, so this reads as one space-separated run.
-  assert.deepEqual(paragraphs(body), [["p1", "before and after words"]]);
-});
-
-test("paragraphs() collapses whitespace runs (including newlines) to a single space", () => {
-  const body = '<p id="p1">  lots   of\n\n  whitespace   here  </p>';
-  assert.deepEqual(paragraphs(body), [["p1", "lots of whitespace here"]]);
-});
-
-test("paragraphs() drops paragraphs with fewer than 2 words", () => {
-  const body =
-    '<p id="empty"></p><p id="one-word">Solo</p><p id="two-words">Two words</p>';
-  assert.deepEqual(paragraphs(body), [["two-words", "Two words"]]);
-});
-
-test("paragraphs() ignores <p> tags without an id attribute", () => {
-  const body = '<p>No id, two words</p><p id="p1">Has id two words</p>';
-  assert.deepEqual(paragraphs(body), [["p1", "Has id two words"]]);
-});
-
-test("paragraphs() returns an empty array when there are no anchored paragraphs", () => {
-  assert.deepEqual(paragraphs("<div>no paragraphs at all</div>"), []);
-});
+} from "../src/gate.ts";
+import type { WorkerOut } from "../src/types/WorkerOut.ts";
 
 // ---------------------------------------------------------------------------
 // judge()
@@ -225,45 +168,4 @@ test("gateRefusal() returns tail_s's sentence when it is the last remaining fail
   const { docCoverage } = judge(meta);
   const msg = gateRefusal(meta, docCoverage);
   assert.match(msg, /after the last paragraph/);
-});
-
-// ---------------------------------------------------------------------------
-// rows()
-// ---------------------------------------------------------------------------
-
-test("rows() flattens the phrases map to row objects with correct field mapping", () => {
-  const phrases = {
-    "anchor-1": [
-      [0, 1.5, 0.9, 0] as [number, number, number, number],
-      [1, 3.25, 0.8, 0] as [number, number, number, number],
-    ],
-    "anchor-2": [[0, 10.0, 0.95, 1] as [number, number, number, number]],
-  };
-  assert.deepEqual(rows(phrases), [
-    {
-      anchor_id: "anchor-1",
-      phrase_index: 0,
-      begin_secs: 1.5,
-      confidence: 0.9,
-      section: 0,
-    },
-    {
-      anchor_id: "anchor-1",
-      phrase_index: 1,
-      begin_secs: 3.25,
-      confidence: 0.8,
-      section: 0,
-    },
-    {
-      anchor_id: "anchor-2",
-      phrase_index: 0,
-      begin_secs: 10.0,
-      confidence: 0.95,
-      section: 1,
-    },
-  ]);
-});
-
-test("rows() returns an empty array for an empty phrases map", () => {
-  assert.deepEqual(rows({}), []);
 });

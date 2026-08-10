@@ -29,8 +29,10 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as cheerio from "cheerio";
-import { deepFreeze } from "./core.ts";
-import { DOC_FILE, type Doc, loadDoc, sha256 } from "./format.ts";
+import { deepFreeze } from "./deepFreeze.ts";
+import { loadDoc } from "./loadDoc.ts";
+import { sha256 } from "./sha256.ts";
+import { DOC_FILE, type Doc } from "./types/Doc.ts";
 
 /** Escape a string for XML text/attribute content. */
 function esc(s: string): string {

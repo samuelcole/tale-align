@@ -23,34 +23,31 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { anchorText } from "./anchorText.ts";
+import { downloadSections } from "./downloadSections.ts";
+import { epubIdentity } from "./epubIdentity.ts";
+import { epubToAnchored } from "./epubToAnchored.ts";
+import { exportEpub } from "./exportEpub.ts";
+import { fetchGutenbergEpub } from "./fetchGutenbergEpub.ts";
+import { fetchRecording } from "./fetchRecording.ts";
 import {
+  gateRefusal,
   judge,
   MAX_LEAD_S,
   MAX_TAIL_S,
   MIN_COVERAGE,
   MIN_DOC_COVERAGE,
   MIN_MEDIAN_CONF,
-  gateRefusal,
-  paragraphs,
-  STREAM_SECS,
-} from "./core.ts";
-import { exportEpub } from "./epub.ts";
-import {
-  type Doc,
-  loadDoc,
-  saveDoc,
-  type SectionEntry,
-  sha256,
-} from "./format.ts";
-import {
-  epubIdentity,
-  epubToAnchored,
-  fetchGutenbergEpub,
-  slugify,
-} from "./gutenberg.ts";
-import { downloadSections, fetchRecording } from "./librivox.ts";
-import { anchorText } from "./prepare.ts";
-import { probeSecs, runAligner } from "./worker.ts";
+} from "./gate.ts";
+import { loadDoc } from "./loadDoc.ts";
+import { paragraphs } from "./paragraphs.ts";
+import { probeSecs } from "./probeSecs.ts";
+import { runAligner } from "./runAligner.ts";
+import { saveDoc } from "./saveDoc.ts";
+import { sha256 } from "./sha256.ts";
+import { slugify } from "./slugify.ts";
+import { STREAM_SECS } from "./STREAM_SECS.ts";
+import type { Doc, SectionEntry } from "./types/Doc.ts";
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -371,7 +368,7 @@ stage 2 — align (anchors the text, times every word, records the verdict):
   tale-align align        --dir <workdir> [--python <bin>] [--model wav2vec2|mms_fa] [--dry]
   tale-align export       --dir <workdir> [--out <file.epub>] [--force]
 
-The aligner needs python + torch (see worker/requirements.txt) and ffmpeg on
+The aligner needs python + torch (see requirements.txt) and ffmpeg on
 PATH. Point --python (or ALIGN_PYTHON) at the venv's interpreter.
 `;
 

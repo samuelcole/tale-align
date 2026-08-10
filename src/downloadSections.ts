@@ -1,9 +1,5 @@
 /**
- * LibriVox → a book's spoken-word audio, laid out on disk in playing order.
- * LibriVox volunteers read public-domain books chapter by chapter and host
- * the results on archive.org; this resolves one LibriVox recording id to its
- * ordered sections (`fetchRecording`) and pulls each section's MP3 down into
- * a work directory (`downloadSections`).
+ * A LibriVox recording's audio, laid out on disk in playing order.
  *
  * Downloads are resumable — a file already on disk is kept as-is, just
  * re-probed for its real duration — and paced: archive.org is a shared
@@ -13,82 +9,14 @@
 
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { deepFreeze } from "./core.ts";
-import type { SectionEntry } from "./format.ts";
-import { download, probeSecs } from "./worker.ts";
+import { deepFreeze } from "./deepFreeze.ts";
+import { download } from "./download.ts";
+import { probeSecs } from "./probeSecs.ts";
+import type { SectionEntry } from "./types/Doc.ts";
+import type { LibriVoxRecording } from "./types/LibriVoxRecording.ts";
 
 const UA = "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export type LibriVoxSection = {
-  position: number;
-  title: string | null;
-  reader: string | null;
-  listenUrl: string;
-};
-
-export type LibriVoxRecording = {
-  id: string;
-  url: string;
-  title: string;
-  sections: LibriVoxSection[];
-};
-
-/** The slice of LibriVox's extended feed shape this module actually reads. */
-type LvFeed = {
-  books?: {
-    title?: string;
-    url_librivox?: string;
-    sections?: {
-      section_number?: string;
-      title?: string;
-      listen_url?: string;
-      readers?: { display_name?: string }[];
-    }[];
-  }[];
-};
-
-/** `http://` → `https://`, and `www.archive.org` → the canonical bare host —
- *  the feed and archive.org itself serve the same file under both forms. */
-function normalizeListenUrl(url: string): string {
-  return url
-    .replace(/^http:/, "https:")
-    .replace("://www.archive.org", "://archive.org");
-}
-
-/** Fetch one LibriVox recording's identity and ordered sections. */
-export async function fetchRecording(id: string): Promise<LibriVoxRecording> {
-  const feedUrl = `https://librivox.org/api/feed/audiobooks/?format=json&extended=1&id=${id}`;
-  const res = await fetch(feedUrl, { headers: { "user-agent": UA } });
-  if (!res.ok) {
-    throw new Error(`librivox HTTP ${res.status}`);
-  }
-  const json = (await res.json()) as LvFeed;
-  const book = json.books?.[0];
-  if (!book) {
-    throw new Error(`librivox: no recording found for id ${id}`);
-  }
-
-  // LibriVox's own section_number is the ordering key; positions are then
-  // renumbered 1..n in that order rather than trusted as-is (feeds are
-  // occasionally 0-based, gappy, or out of order).
-  const ordered = (book.sections ?? []).toSorted(
-    (a, b) => Number(a.section_number) - Number(b.section_number),
-  );
-  const sections: LibriVoxSection[] = ordered.map((s, i) => ({
-    position: i + 1,
-    title: s.title?.trim() || null,
-    reader: s.readers?.[0]?.display_name?.trim() || null,
-    listenUrl: normalizeListenUrl(s.listen_url ?? ""),
-  }));
-
-  return deepFreeze({
-    id,
-    url: book.url_librivox || feedUrl,
-    title: book.title ?? "",
-    sections,
-  });
-}
 
 async function isNonEmptyFile(file: string): Promise<boolean> {
   try {

@@ -1,6 +1,5 @@
 /**
- * What a read-along IS: the paragraphs an alignment targets, the rows it turns
- * into, and the gate that decides whether any of it ships.
+ * The gate that decides whether a read-along ships. One promise, one file.
  *
  * Different callers drive the same alignment — a one-off CLI run, a batch job
  * over a whole catalog, an app that hands a job to a sandboxed worker. They
@@ -14,15 +13,13 @@
  *
  * **Pure on purpose.** Nothing here spawns a process, touches a filesystem, or
  * reaches the network. The half that does — the aligner spawn, the audio
- * download, the ffprobe call — is ./worker.ts, and it lives apart precisely so
- * a caller can import the gate and the anchor extraction without dragging
+ * download, the ffprobe call — lives apart (./runAligner.ts, ./download.ts,
+ * ./probeSecs.ts) precisely so a caller can import the gate without dragging
  * `node:child_process` into its bundle. If something here ever needs an env
  * var or a driver, it belongs over there.
- *
- * Consumers pass anchored HTML — the `<p id="…">` markup a reader deep-links
- * into. Rendering markdown or any other source format down to that HTML is
- * the caller's business; this module only ever reads the anchors.
  */
+
+import type { WorkerOut } from "./types/WorkerOut.ts";
 
 /**
  * The read-along gate — a recording ships only when it clears every bar.
@@ -65,77 +62,6 @@ export const MIN_DOC_COVERAGE = 0.5;
 // rounding and a final spoken title/credit before the book text begins.
 export const MAX_LEAD_S = 125;
 export const MAX_TAIL_S = 120;
-
-/**
- * Above this length, the worker streams its emission to a disk memmap instead of
- * holding it in RAM — otherwise a 20h+ book's whole emission plus its phase-1
- * search exhausts memory and the OS kills it (An Autobiography, 21.8h, used to
- * climb for an hour then die). Streaming is somewhat slower per book (a memmap
- * read + cast per align vs a zero-copy slice), so only the giants pay it;
- * everything under 15h stays resident and fast. 15h is twice the longest book
- * that aligns comfortably in RAM.
- */
-export const STREAM_SECS = 54_000;
-
-/** Default UA for audio downloads — callers can override it. */
-export const DEFAULT_UA =
-  "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
-
-export type Fragment = [id: string, text: string];
-/** One phrase of a paragraph: [phraseIndex, beginSecs, confidence, section]. */
-export type PhraseRow = [number, number, number, number];
-/** One aligned word for the archive: [beginSecs, normalizedWord, confidence]. */
-export type WordRow = [number, string, number];
-export type WorkerOut = {
-  phrases: Record<string, PhraseRow[]>;
-  words: Record<string, WordRow[]>;
-  meta: {
-    paras: number;
-    placed: number;
-    /** Placed as a fraction of the paragraphs *between the first and last
-     * placed* — so un-narrated front/back matter (prefaces, endnotes) doesn't
-     * count against a book whose actual read text aligned. */
-    span_coverage: number;
-    /** Seconds of audio before the first placed paragraph, and after the last —
-     * a big lead/tail means narrated content that failed to align at an end. */
-    lead_s: number;
-    tail_s: number;
-    phrases: number;
-    median_conf: number;
-    device: string;
-    /** Which acoustic backend produced this ("wav2vec2" | "mms_fa");
-     *  absent from older workers' output. */
-    model?: string;
-  };
-};
-
-/**
- * A book's anchored paragraphs, in document order — the alignment targets. The
- * input is anchored HTML carrying `<p id="…">` (the anchor contract), so these
- * ids are exactly what a reader renders and deep links use. Rendering markdown
- * or any other source format to that anchored HTML is the caller's business —
- * this function only ever reads `<p id>` tags. One- and zero-word paragraphs
- * are dropped: the aligner needs words to lock onto, and they are not worth a
- * row.
- */
-export function paragraphs(body: string): Fragment[] {
-  return [...body.matchAll(/<p id="([^"]+)">([\s\S]*?)<\/p>/g)]
-    .map(
-      (m): Fragment => [
-        m[1],
-        m[2]
-          .replace(/<[^>]+>/g, "")
-          .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n))
-          .replace(/&amp;/g, "&")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&[a-z]+;/g, " ")
-          .replace(/\s+/g, " ")
-          .trim(),
-      ],
-    )
-    .filter(([, text]) => text.split(" ").length >= 2);
-}
 
 /**
  * The verdict, in one place. `docCoverage` comes back with it because every
@@ -200,56 +126,4 @@ export function gateRefusal(
     `the recording keeps going for ${Math.round(meta.tail_s)} seconds after the last ` +
     `paragraph it matched; the bar is ${MAX_TAIL_S} — its ending didn't line up.`
   );
-}
-
-/** The phrase-level sync map a reader renders, flattened to rows. */
-export function rows(phrases: Record<string, PhraseRow[]>) {
-  return Object.entries(phrases).flatMap(([anchorId, list]) =>
-    list.map(([phraseIndex, begin, conf, section]) => ({
-      anchor_id: anchorId,
-      phrase_index: phraseIndex,
-      begin_secs: begin,
-      confidence: conf,
-      section,
-    })),
-  );
-}
-
-/**
- * Freeze a value and everything reachable through it, in place.
- *
- * Every value this library hands back is frozen on its way out the door, so a
- * caller who tries to edit a result *fails loudly* instead of quietly editing
- * a copy of the truth — the modules are all ESM, which is strict mode, so an
- * assignment to a frozen object throws a TypeError rather than being silently
- * dropped. It is the runtime half of the convention the source keeps: nothing
- * here reassigns a binding or mutates an object it did not just build.
- *
- * Only plain objects and arrays are walked. Buffers and other typed arrays are
- * returned untouched (freezing one throws — a view over a mutable buffer can't
- * honor it), and so is anything with a class prototype (a Map, a Date, a
- * cheerio node): freezing those breaks their own methods, which is a worse
- * bargain than the guarantee is worth. An already-frozen value is taken at its
- * word and not descended into.
- */
-export function deepFreeze<T>(value: T): T {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    ArrayBuffer.isView(value) ||
-    Object.isFrozen(value)
-  ) {
-    return value;
-  }
-  const proto = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) {
-    return value;
-  }
-  // Freeze before descending: a structure that points back at itself then
-  // stops on the second visit instead of recursing forever.
-  Object.freeze(value);
-  for (const child of Object.values(value)) {
-    deepFreeze(child);
-  }
-  return value;
 }

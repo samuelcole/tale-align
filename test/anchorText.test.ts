@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { paragraphs } from "../src/core.ts";
-import { anchorText } from "../src/prepare.ts";
+import { anchorText } from "../src/anchorText.ts";
+import { paragraphs } from "../src/paragraphs.ts";
 
 // ---------------------------------------------------------------------------
 // txt mode
@@ -102,7 +102,7 @@ test("anchorText() html mode ids follow document order", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Composability with paragraphs() from ../src/core.ts
+// Composability with paragraphs() from ../src/paragraphs.ts
 // ---------------------------------------------------------------------------
 
 test("paragraphs(anchorText(txt)) yields the expected fragments", () => {

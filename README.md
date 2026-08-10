@@ -73,6 +73,15 @@ editing it: `saveDoc(dir, { ...doc, audio })`, never `doc.audio = …`. Under
 ESM's strict mode the second throws, which is the point — a result you
 edited was never the result anything else saw.
 
+**Imports.** Every export is on the package root, and every module is also its
+own subpath — one file per export, named for it, so `tale-align/gate` is the
+gates and nothing else (no `node:child_process` pulled into your bundle):
+
+```ts
+import { judge } from "tale-align/gate";
+import type { Doc } from "tale-align/types/Doc";
+```
+
 ## Quickstart
 
 Requirements: Node ≥ 22.18, Python 3.12, `ffmpeg` on PATH.
@@ -81,7 +90,7 @@ Requirements: Node ≥ 22.18, Python 3.12, `ffmpeg` on PATH.
 pnpm install && pnpm build
 
 # the aligner's own venv (torch ~2GB; model weights auto-download on first run)
-python3.12 -m venv .venv && .venv/bin/pip install -r worker/requirements.txt
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 node dist/cli.js fetch-text  --gutenberg 41  --dir work/sleepy-hollow
 node dist/cli.js fetch-audio --librivox 428  --dir work/sleepy-hollow
@@ -95,7 +104,7 @@ auto-detected); CPU aligns at ~20×.
 ## How the aligner works
 
 Two global phases, no per-section state to lose (the worker's docstring in
-[`worker/align_worker.py`](worker/align_worker.py) is the full story): a
+[`src/align_worker.py`](src/align_worker.py) is the full story): a
 whole-book CTC forward pass builds a monotone chain of word→frame anchors —
 un-narrated text (a preface, a translator's note) simply fails to lock and
 is skipped — then a bounded fine-align inside each anchor bracket recovers

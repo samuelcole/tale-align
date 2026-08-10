@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fetchRecording } from "../src/librivox.ts";
+import { fetchRecording } from "../src/fetchRecording.ts";
 
 /** Build a fetch-shaped Response for a LibriVox feed body. */
 function feedResponse(json: unknown, status = 200): Response {
@@ -179,8 +179,8 @@ test("fetchRecording throws a clear error when the HTTP status is not ok", async
 
 // Note: downloadSections' real download/resume/skip logic is intentionally
 // not covered here. Exercising it faithfully needs either real tiny mp3s
-// (ffmpeg can make those, but then probeSecs is testing worker.ts, not
-// librivox.ts) or fetch mocked with byte payloads plus a stubbed sleep (the
+// (ffmpeg can make those, but then it is probeSecs.ts under test, not
+// downloadSections.ts) or fetch mocked with byte payloads plus a stubbed sleep (the
 // module's pacing `sleep` is a local, unexported const — not injectable
 // without editing src). Given the fetchRecording coverage above already
 // exercises the section-ordering contract downloadSections consumes, the

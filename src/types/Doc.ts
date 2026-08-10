@@ -13,16 +13,17 @@
  * missed" — but a consumer must be able to honor the refusal. `export` does
  * (it will not emit an epub from a refused alignment without --force), and
  * any other consumer should. See FORMAT.md for the written spec.
+ *
+ * `FORMAT` and `DOC_FILE` live here rather than beside the reader and writer
+ * because they are part of the type, not of the I/O: `Doc["format"]` is
+ * literally `typeof FORMAT`, and `DOC_FILE` is the filename this shape is
+ * always stored under. The runtime provenance stamp (`GENERATOR`) is a
+ * different thing and lives with the writer that applies it, ./saveDoc.ts.
  */
 
-import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { deepFreeze, type WorkerOut } from "./core.ts";
+import type { WorkerOut } from "./WorkerOut.ts";
 
-export const VERSION = "0.1.0";
 export const FORMAT = "tale-align/v1";
-export const GENERATOR = `tale-align/${VERSION}`;
 export const DOC_FILE = "tale-align.json";
 
 /** Where a text or a recording came from — enough to credit and re-fetch it. */
@@ -89,35 +90,3 @@ export type Doc = {
     verdict: Verdict;
   };
 };
-
-export function sha256(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
-
-/** Read a work directory's document, or start a fresh one if none exists yet.
- *  A file that exists but declares another format is an error, not a restart —
- *  silently clobbering someone's data is worse than asking them to look. The
- *  document comes back frozen: a stage that wants to add its half builds the
- *  next document from this one (`{ ...doc, audio }`) rather than editing it. */
-export async function loadDoc(dir: string): Promise<Doc> {
-  const file = path.join(dir, DOC_FILE);
-  const raw = await readFile(file, "utf8").catch(() => null);
-  if (raw === null) {
-    return deepFreeze({ format: FORMAT, generator: GENERATOR });
-  }
-  const doc = JSON.parse(raw) as Doc;
-  if (doc.format !== FORMAT) {
-    throw new Error(
-      `${file}: unknown format "${doc.format}" (expected ${FORMAT})`,
-    );
-  }
-  return deepFreeze(doc);
-}
-
-/** Compact on purpose: the words map for a novel runs to megabytes, and this
- *  file is a machine transport — FORMAT.md is the human-readable half. The
- *  generator stamp goes on the written document, not the caller's object. */
-export async function saveDoc(dir: string, doc: Doc): Promise<void> {
-  const stamped = { ...doc, generator: GENERATOR };
-  await writeFile(path.join(dir, DOC_FILE), `${JSON.stringify(stamped)}\n`);
-}

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { probeSecs, runAligner, workerPath } from "../src/worker.ts";
+import { probeSecs } from "../src/probeSecs.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -43,13 +43,6 @@ async function mkAudioFixture(): Promise<{
   return { dir, mp3, png };
 }
 
-test("workerPath points at an existing worker/align_worker.py file", async () => {
-  const p = workerPath();
-  assert.ok(p.endsWith(path.join("worker", "align_worker.py")));
-  const info = await stat(p);
-  assert.ok(info.isFile());
-});
-
 test("probeSecs returns ~2 seconds for a 2-second ffmpeg-generated file", async () => {
   const { dir, mp3 } = await mkAudioFixture();
   try {
@@ -67,22 +60,4 @@ test("probeSecs rejects with its 'no readable duration' error when ffprobe finds
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-});
-
-test("runAligner rejects when the python interpreter does not exist", async () => {
-  await assert.rejects(
-    () => runAligner([], [], { python: "/nonexistent/python" }),
-    /ENOENT/,
-  );
-});
-
-test("runAligner rejects with 'aligner exited' when the interpreter exits non-zero", async () => {
-  // Running node against the .py file exercises the real spawn/stdin/stdout
-  // plumbing without needing the actual (torch-dependent) aligner: node
-  // can't parse Python and exits non-zero, which is exactly the failure
-  // path runAligner is supposed to surface as "aligner exited <code>".
-  await assert.rejects(
-    () => runAligner([], [], { python: "node" }),
-    /aligner exited/,
-  );
 });

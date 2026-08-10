@@ -17,7 +17,8 @@
  *
  * Identity (title, author, language) is read from the epub's own OPF
  * metadata rather than supplied by a caller — this module only needs the
- * file itself.
+ * file itself. That read is ./epubIdentity.ts, which a stage-1 fetch can call
+ * on its own without paying for the whole conversion.
  *
  * The conversion is written as expressions over immutable values, and what it
  * returns is frozen. The one exemption is cheerio: its DOM API *is* mutation
@@ -28,66 +29,12 @@
 
 import AdmZip from "adm-zip";
 import * as cheerio from "cheerio";
-import { deepFreeze } from "./core.ts";
-
-const UA = "tale-align/0.1 (+https://github.com/samuelcole/tale-align)";
-
-// Ported verbatim from tale.fyi's body slugifier so section ids stay
-// byte-identical to the scheme this package's anchor contract depends on.
-export const slugify = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/[’']/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-/**
- * Rewrite an internal epub cross-reference to a same-page hash: the whole
- * book renders as one page, so a link into another spine file has to point
- * at an anchor *here*, not at a file that never ships. A fragment keeps its
- * target (`chapter5.xhtml#note3` → `#note3`); a bare file link falls back to
- * the file's basename (`notes.xhtml` → `#notes`); absolute `http(s):`/
- * `mailto:` links and links already written as `#hashes` are returned
- * untouched. Gutenberg's content docs are usually `.xhtml` but sometimes
- * `.html`/`.htm`, so all three are stripped. This is href-side only: the
- * section/paragraph ids are minted elsewhere.
- */
-export function samePageHref(href: string): string {
-  if (/^[a-z]+:/i.test(href) || href.startsWith("#")) {
-    return href;
-  }
-  const [file, anchor] = href.split("#");
-  const target = file
-    .split("/")
-    .pop()
-    ?.replace(/\.(?:xhtml|html|htm)$/i, "");
-  return `#${anchor ?? target}`;
-}
-
-/**
- * Fetch a book's epub from Gutenberg's own cache mirror. Most books ship an
- * "-images" edition; a handful (mostly very old ids) only have the plain
- * one, so that's tried second. Throws if neither exists.
- */
-export async function fetchGutenbergEpub(id: string): Promise<Buffer> {
-  for (const name of [`pg${id}-images.epub`, `pg${id}.epub`]) {
-    const res = await fetch(
-      `https://www.gutenberg.org/cache/epub/${id}/${name}`,
-      { headers: { "user-agent": UA } },
-    );
-    if (res.ok) {
-      return Buffer.from(await res.arrayBuffer());
-    }
-  }
-  throw new Error(`no epub found for Gutenberg id ${id}`);
-}
-
-export type GutenbergBook = {
-  title: string;
-  author: string | null;
-  language: string;
-  body: string;
-};
+import { deepFreeze } from "./deepFreeze.ts";
+import { epubIdentity } from "./epubIdentity.ts";
+import { openOpf } from "./opf.ts";
+import { samePageHref } from "./samePageHref.ts";
+import { slugify } from "./slugify.ts";
+import type { GutenbergBook } from "./types/GutenbergBook.ts";
 
 /** Spine items that are never book text — cover and nav. Deliberately NOT
  *  `pg-header`/`pg-footer`: Gutenberg's generator assigns the id `pg-header`
@@ -102,64 +49,6 @@ const PG_MARKER =
 
 /** A section that's front/back matter, not the book itself. */
 const SKIP_TITLE = /^(contents|table of contents|transcriber|illustrations)/i;
-
-/**
- * Gutenberg's `dc:creator` is usually "Last, First"; flip it to reading
- * order when that's unambiguous — exactly one comma — and leave anything
- * else (multiple creators joined by commas, a "Jr." suffix, no comma at
- * all) exactly as the epub wrote it.
- */
-function flipLastFirst(name: string): string {
-  const parts = name.split(",");
-  return parts.length === 2 ? `${parts[1].trim()} ${parts[0].trim()}` : name;
-}
-
-/** Open an epub's OPF the way the spec says to: container.xml names it. */
-function openOpf(zip: AdmZip) {
-  const readEntry = (p: string): string => {
-    const entry = zip.getEntry(p);
-    if (!entry) {
-      throw new Error(`epub: missing ${p}`);
-    }
-    return entry.getData().toString("utf8");
-  };
-  const container = cheerio.load(readEntry("META-INF/container.xml"), {
-    xml: true,
-  });
-  const opfPath = container("rootfile").attr("full-path");
-  if (!opfPath) {
-    throw new Error("epub: no OPF rootfile");
-  }
-  const opfDir = opfPath.includes("/")
-    ? opfPath.slice(0, opfPath.lastIndexOf("/"))
-    : "";
-  return {
-    opf: cheerio.load(readEntry(opfPath), { xml: true }),
-    opfDir,
-    readEntry,
-  };
-}
-
-/** A book's identity from its own OPF metadata — no catalog, no caller-
- *  supplied title/author. Cheap enough for a stage-1 fetch to stamp
- *  provenance without running the whole conversion. */
-export function epubIdentity(data: Buffer): {
-  title: string;
-  author: string | null;
-  language: string;
-} {
-  const { opf } = openOpf(new AdmZip(data));
-  const title = opf("metadata > dc\\:title").first().text().trim();
-  if (!title) {
-    throw new Error("epub: missing dc:title");
-  }
-  const creator = opf("metadata > dc\\:creator").first().text().trim();
-  return deepFreeze({
-    title,
-    author: creator ? flipLastFirst(creator) : null,
-    language: opf("metadata > dc\\:language").first().text().trim() || "en",
-  });
-}
 
 /**
  * One spine document's body-level blocks, in reading order, tidied: PG's
