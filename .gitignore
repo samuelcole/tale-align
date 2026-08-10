@@ -1,0 +1,7 @@
+node_modules/
+dist/
+work/
+*.epub
+__pycache__/
+.DS_Store
+.venv/

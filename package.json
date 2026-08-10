@@ -1,0 +1,36 @@
+{
+  "name": "tale-align",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Forced-align public-domain audiobooks to their texts and export EPUB 3 with Media Overlays — with quality gates that refuse to ship a bad alignment.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "tale-align": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "worker"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^24",
+    "@types/adm-zip": "^0.5"
+  }
+}
