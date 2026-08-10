@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelcole/tale-align.git"
+  },
+  "homepage": "https://github.com/samuelcole/tale-align#readme",
+  "bugs": "https://github.com/samuelcole/tale-align/issues",
   "description": "Forced-align public-domain audiobooks to their texts and export EPUB 3 with Media Overlays — with quality gates that refuse to ship a bad alignment.",
   "engines": {
     "node": ">=22.18"
