@@ -127,15 +127,8 @@ carries both sources in `dc:source`.
 
 ## Colophon
 
-Extracted from [tale.fyi](https://tale.fyi)'s production read-along
-pipeline and built agentically: the stage boundaries, interchange format,
-and interface contracts were specified in-session; the mechanical ports ran
-as parallel model agents against those contracts; every diff was reviewed
-before it landed. Verification is the spine of that process — epubcheck on
-every export, boundary forensics comparing two independent derivations of
-clip-to-file attribution, and real-reader QA in Thorium. The same process
-caught two real bugs on the way out: a Gutenberg conversion that silently
-dropped a split epub's opening chapter (the generator names the whole first
-content file `pg-header`), and an exporter rule that dropped any paragraph
-whose opening phrase never locked. Both are fixed here; the first is
-tracked for the upstream importer too.
+Code mechanically written by Claude (Anthropic), largely as parallel
+agents working against specified interface contracts; architected and
+steered by Samuel Cole. Extracted from
+[tale.fyi](https://tale.fyi)'s production read-along pipeline, whose
+shipped alignments it reproduces.
