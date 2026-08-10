@@ -145,6 +145,6 @@ carries both sources in `dc:source`.
 
 Code mechanically written by Claude (Anthropic), largely as parallel
 agents working against specified interface contracts; architected and
-steered by Samuel Cole. Extracted from
+steered by [Samuel Cole](https://www.samuelcole.name/). Extracted from
 [tale.fyi](https://tale.fyi)'s production read-along pipeline, whose
 shipped alignments it reproduces.
