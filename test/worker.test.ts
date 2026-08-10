@@ -9,7 +9,11 @@ import { probeSecs, runAligner, workerPath } from "../src/worker.ts";
 
 const execFileAsync = promisify(execFile);
 
-async function mkAudioFixture(): Promise<{ dir: string; mp3: string; png: string }> {
+async function mkAudioFixture(): Promise<{
+  dir: string;
+  mp3: string;
+  png: string;
+}> {
   const dir = await mkdtemp(path.join(tmpdir(), "worker-test-"));
   const mp3 = path.join(dir, "tiny.mp3");
   const png = path.join(dir, "tiny.png");
@@ -50,10 +54,7 @@ test("probeSecs returns ~2 seconds for a 2-second ffmpeg-generated file", async 
   const { dir, mp3 } = await mkAudioFixture();
   try {
     const secs = await probeSecs(mp3);
-    assert.ok(
-      Math.abs(secs - 2) < 0.2,
-      `expected ~2s, got ${secs}`,
-    );
+    assert.ok(Math.abs(secs - 2) < 0.2, `expected ~2s, got ${secs}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -62,10 +63,7 @@ test("probeSecs returns ~2 seconds for a 2-second ffmpeg-generated file", async 
 test("probeSecs rejects with its 'no readable duration' error when ffprobe finds no duration", async () => {
   const { dir, png } = await mkAudioFixture();
   try {
-    await assert.rejects(
-      () => probeSecs(png),
-      /no readable duration/,
-    );
+    await assert.rejects(() => probeSecs(png), /no readable duration/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

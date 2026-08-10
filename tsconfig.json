@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "target": "es2023",
+    // es2023 for the emit; esnext.array only for Array.fromAsync's type — the
+    // sequential-await collector this code uses instead of a push loop. Node
+    // 22.18+ (the engines floor) has it.
+    "lib": ["es2023", "esnext.array"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "strict": true,

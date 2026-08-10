@@ -7,7 +7,7 @@ import { anchorText } from "../src/prepare.ts";
 // txt mode
 // ---------------------------------------------------------------------------
 
-test("anchorText() txt mode turns blank-line-separated blocks into <p id> inside <section id=\"text\">", () => {
+test('anchorText() txt mode turns blank-line-separated blocks into <p id> inside <section id="text">', () => {
   const input = "First paragraph.\n\nSecond paragraph.";
   assert.equal(
     anchorText(input, "txt"),
@@ -79,7 +79,7 @@ test("anchorText() html mode bakes sequential text-pN ids onto <p> tags that hav
   );
 });
 
-test("anchorText() html mode wraps in <section id=\"text\"> when the input has no <section id>", () => {
+test('anchorText() html mode wraps in <section id="text"> when the input has no <section id>', () => {
   const input = "<p>Only paragraph.</p>";
   const out = anchorText(input, "html");
   assert.match(out, /^<section id="text">\n/);
@@ -95,7 +95,7 @@ test("anchorText() html mode does not add an extra wrapper when the input alread
 });
 
 test("anchorText() html mode ids follow document order", () => {
-  const input = '<div><p>Alpha para.</p><span><p>Beta para.</p></span></div>';
+  const input = "<div><p>Alpha para.</p><span><p>Beta para.</p></span></div>";
   const out = anchorText(input, "html");
   assert.match(out, /<p id="text-p1">Alpha para\.<\/p>/);
   assert.match(out, /<p id="text-p2">Beta para\.<\/p>/);
@@ -126,7 +126,8 @@ test("paragraphs(anchorText(html)) yields the expected fragments", () => {
 });
 
 test("paragraphs(anchorText(html)) is a no-op pass-through when the input is already anchored", () => {
-  const input = '<p id="a">First anchored para</p><p id="b">Second anchored para</p>';
+  const input =
+    '<p id="a">First anchored para</p><p id="b">Second anchored para</p>';
   assert.deepEqual(paragraphs(anchorText(input, "html")), [
     ["a", "First anchored para"],
     ["b", "Second anchored para"],

@@ -1,6 +1,6 @@
 {
   "name": "tale-align",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -34,6 +34,8 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "tsc",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "test": "node --test test/*.test.ts",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.ts"
   },
@@ -42,8 +44,9 @@
     "cheerio": "^1.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "@biomejs/biome": "^2.5.7",
+    "@types/adm-zip": "^0.5",
     "@types/node": "^24",
-    "@types/adm-zip": "^0.5"
+    "typescript": "^5.9.0"
   }
 }

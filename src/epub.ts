@@ -29,6 +29,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as cheerio from "cheerio";
+import { deepFreeze } from "./core.ts";
 import { DOC_FILE, type Doc, loadDoc, sha256 } from "./format.ts";
 
 /** Escape a string for XML text/attribute content. */
@@ -95,29 +96,26 @@ export async function exportEpub(
   // Whole-book time at the start of each section's file, and each file's
   // length. Sort defensively — the timeline math below is cumulative, so an
   // out-of-order array would skew every clip after the first mistake.
-  const audioSections = [...audio.sections].sort(
+  const audioSections = audio.sections.toSorted(
     (a, b) => a.position - b.position,
   );
-  const startAt = new Map<number, number>();
-  let cum = 0;
-  for (const a of audioSections) {
-    startAt.set(a.position, cum);
-    cum += a.secs;
-  }
-  // Which file a whole-book second falls in — walked from the timeline
-  // rather than trusting a stored section column, which can disagree with
-  // the position order and point a clip at the wrong file.
-  const sectionAt = (b: number) => {
-    let pos = audioSections[0].position;
-    for (const a of audioSections) {
-      if ((startAt.get(a.position) ?? 0) <= b) {
-        pos = a.position;
-      } else {
-        break;
-      }
-    }
-    return pos;
-  };
+  // Each file's start is the sum of the ones before it — summed left to right,
+  // exactly as a running total would, so the floats land in the same places.
+  const startAt = new Map<number, number>(
+    audioSections.map((a, i) => [
+      a.position,
+      audioSections.slice(0, i).reduce((s, x) => s + x.secs, 0),
+    ]),
+  );
+  // Which file a whole-book second falls in — read off the timeline (whose
+  // starts only ever increase) rather than trusting a stored section column,
+  // which can disagree with the position order and point a clip at the wrong
+  // file.
+  const sectionAt = (b: number) =>
+    (
+      audioSections.findLast((a) => (startAt.get(a.position) ?? 0) <= b) ??
+      audioSections[0]
+    ).position;
 
   // The book as one XHTML content document — the text file already carries
   // the anchor ids the aligner keyed against, so the fragments resolve.
@@ -183,16 +181,13 @@ ${tocEntries || `      <li><a href="book.xhtml">${esc(book.title)}</a></li>`}
   // can still carry later phrases, and requiring phrase 0 would drop it from
   // the overlay entirely (play-from-the-top would skip its narration). The
   // earliest placed phrase is the honest begin either way.
-  const rows: { anchor_id: string; begin_secs: number }[] = [];
-  for (const [anchorId, hits] of Object.entries(alignment.phrases)) {
-    if (hits.length > 0) {
-      rows.push({
-        anchor_id: anchorId,
-        begin_secs: Math.min(...hits.map((h) => h[1])),
-      });
-    }
-  }
-  rows.sort((a, b) => a.begin_secs - b.begin_secs);
+  const rows = Object.entries(alignment.phrases)
+    .filter(([, hits]) => hits.length > 0)
+    .map(([anchorId, hits]) => ({
+      anchor_id: anchorId,
+      begin_secs: Math.min(...hits.map((h) => h[1])),
+    }))
+    .toSorted((a, b) => a.begin_secs - b.begin_secs);
 
   // One SMIL: a par per paragraph, its clip bounded by the next paragraph in
   // the same file (or the file's end). Whole-book begin → within-file clip.
@@ -208,21 +203,22 @@ ${tocEntries || `      <li><a href="book.xhtml">${esc(book.title)}</a></li>`}
     .filter((r) => presentIds.has(r.anchor)); // skip anchors not in the render
   const skipped = rows.length - within.length;
   const usedSections = new Set(within.map((r) => r.section));
-  let pars = "";
-  within.forEach((r, i) => {
-    const nextSame = within.slice(i + 1).find((x) => x.section === r.section);
-    // Bound the clip by the next paragraph in the same file. The last
-    // paragraph of a file gets no clipEnd, so it plays to the file's real
-    // end — the stored `secs` is a rounded float that can drift below a
-    // late paragraph's start.
-    const clip = nextSame
-      ? `clipBegin="${clock(r.begin)}" clipEnd="${clock(nextSame.begin)}"`
-      : `clipBegin="${clock(r.begin)}"`;
-    pars += `      <par id="p${i + 1}">
+  const pars = within
+    .map((r, i) => {
+      const nextSame = within.slice(i + 1).find((x) => x.section === r.section);
+      // Bound the clip by the next paragraph in the same file. The last
+      // paragraph of a file gets no clipEnd, so it plays to the file's real
+      // end — the stored `secs` is a rounded float that can drift below a
+      // late paragraph's start.
+      const clip = nextSame
+        ? `clipBegin="${clock(r.begin)}" clipEnd="${clock(nextSame.begin)}"`
+        : `clipBegin="${clock(r.begin)}"`;
+      return `      <par id="p${i + 1}">
         <text src="book.xhtml#${esc(r.anchor)}"/>
         <audio src="audio/s${r.section}.mp3" ${clip}/>
       </par>\n`;
-  });
+    })
+    .join("");
   const smil = `<?xml version="1.0" encoding="utf-8"?>
 <smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops" version="3.0">
   <body>
@@ -328,11 +324,11 @@ ${audioItems}
   }
   await rm(tmp, { recursive: true, force: true });
 
-  return {
+  return deepFreeze({
     synced: within.length,
     skipped,
     sections: usedAudio.length,
     totalSecs,
     readers,
-  };
+  });
 }

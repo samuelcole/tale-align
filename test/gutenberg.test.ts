@@ -55,8 +55,7 @@ function book(
   const title = metadata.title === undefined ? "A Test Book" : metadata.title;
   const creator =
     metadata.creator === undefined ? "Doe, Jane" : metadata.creator;
-  const language =
-    metadata.language === undefined ? "en" : metadata.language;
+  const language = metadata.language === undefined ? "en" : metadata.language;
 
   const manifest = items
     .map(
@@ -64,9 +63,7 @@ function book(
         `<item id="${it.idref}" href="text/${it.idref}.xhtml" media-type="application/xhtml+xml"/>`,
     )
     .join("\n");
-  const spine = items
-    .map((it) => `<itemref idref="${it.idref}"/>`)
-    .join("\n");
+  const spine = items.map((it) => `<itemref idref="${it.idref}"/>`).join("\n");
   const metaTags = [
     title !== null ? `<dc:title>${title}</dc:title>` : "",
     creator !== null ? `<dc:creator>${creator}</dc:creator>` : "",
@@ -91,7 +88,8 @@ function book(
     "OEBPS/content.opf": opf,
   };
   for (const it of items) {
-    files[`OEBPS/text/${it.idref}.xhtml`] = `<html><body>${it.html}</body></html>`;
+    files[`OEBPS/text/${it.idref}.xhtml`] =
+      `<html><body>${it.html}</body></html>`;
   }
   return makeEpub(files);
 }
@@ -110,7 +108,10 @@ test("slugify() drops apostrophes without leaving a hyphen behind", () => {
 });
 
 test("slugify() collapses runs of non-alphanumeric characters to a single hyphen", () => {
-  assert.equal(slugify("Stave One: A Ghost Story!!"), "stave-one-a-ghost-story");
+  assert.equal(
+    slugify("Stave One: A Ghost Story!!"),
+    "stave-one-a-ghost-story",
+  );
 });
 
 test("slugify() trims leading and trailing hyphens", () => {
@@ -158,7 +159,7 @@ test("epubIdentity() throws when dc:title is missing", () => {
   assert.throws(() => epubIdentity(data), /missing dc:title/);
 });
 
-test("epubIdentity() flips an exactly-one-comma creator from \"Last, First\" to \"First Last\"", () => {
+test('epubIdentity() flips an exactly-one-comma creator from "Last, First" to "First Last"', () => {
   const data = book([{ idref: "item1", html: "<p>hi there</p>" }], {
     creator: "Dickens, Charles",
   });
@@ -186,7 +187,7 @@ test("epubIdentity() returns author: null when dc:creator is missing", () => {
   assert.equal(epubIdentity(data).author, null);
 });
 
-test("epubIdentity() defaults language to \"en\" when dc:language is missing", () => {
+test('epubIdentity() defaults language to "en" when dc:language is missing', () => {
   const data = book([{ idref: "item1", html: "<p>hi there</p>" }], {
     language: null,
   });
@@ -208,8 +209,7 @@ test("epubToAnchored() cuts a new section at every heading, with paragraph ids c
   const data = book([
     {
       idref: "item1",
-      html:
-        "<h2>Chapter One</h2><p>First.</p><p>Second.</p><h2>Chapter Two</h2><p>Third.</p>",
+      html: "<h2>Chapter One</h2><p>First.</p><p>Second.</p><h2>Chapter Two</h2><p>Third.</p>",
     },
   ]);
   const { body } = epubToAnchored(data);
@@ -220,7 +220,7 @@ test("epubToAnchored() cuts a new section at every heading, with paragraph ids c
   assert.match(body, /<p id="chapter-two-p1">Third\.<\/p>/);
 });
 
-test("epubToAnchored() puts text before the first heading in a \"beginning\" section", () => {
+test('epubToAnchored() puts text before the first heading in a "beginning" section', () => {
   const data = book([
     {
       idref: "item1",
@@ -228,7 +228,10 @@ test("epubToAnchored() puts text before the first heading in a \"beginning\" sec
     },
   ]);
   const { body } = epubToAnchored(data);
-  assert.match(body, /<section id="beginning"><p id="beginning-p1">Prologue text\.<\/p><\/section>/);
+  assert.match(
+    body,
+    /<section id="beginning"><p id="beginning-p1">Prologue text\.<\/p><\/section>/,
+  );
   assert.match(body, /<section id="chapter-one">/);
 });
 
@@ -333,7 +336,7 @@ test("epubToAnchored() drops a top-level PG start/end marker block while keeping
   assert.ok(!body.includes("START OF THE PROJECT GUTENBERG EBOOK TEST"));
 });
 
-test("epubToAnchored() drops a \"Contents\" section wholesale", () => {
+test('epubToAnchored() drops a "Contents" section wholesale', () => {
   const data = book([
     {
       idref: "item1",
@@ -341,7 +344,7 @@ test("epubToAnchored() drops a \"Contents\" section wholesale", () => {
     },
   ]);
   const { body } = epubToAnchored(data);
-  assert.ok(!body.includes("<section id=\"contents\">"));
+  assert.ok(!body.includes('<section id="contents">'));
   // "Chapter Two" only ever appears as one of the Contents section's entries
   // in this fixture, so its absence confirms the section was dropped
   // wholesale rather than just having its heading skipped.
@@ -350,7 +353,7 @@ test("epubToAnchored() drops a \"Contents\" section wholesale", () => {
   assert.match(body, /Real content\./);
 });
 
-test("epubToAnchored() drops an \"Illustrations\" section wholesale", () => {
+test('epubToAnchored() drops an "Illustrations" section wholesale', () => {
   const data = book([
     {
       idref: "item1",
@@ -367,7 +370,7 @@ test("epubToAnchored() drops an \"Illustrations\" section wholesale", () => {
 // epubToAnchored() — heading text normalization
 // ---------------------------------------------------------------------------
 
-test("epubToAnchored() slugs a numeric-entity space in a heading to a single hyphen, not \"nbsp\"", () => {
+test('epubToAnchored() slugs a numeric-entity space in a heading to a single hyphen, not "nbsp"', () => {
   const data = book([
     { idref: "item1", html: "<h2>STAVE&#160;TWO</h2><p>Content.</p>" },
   ]);

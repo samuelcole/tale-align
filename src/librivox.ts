@@ -13,6 +13,7 @@
 
 import { stat } from "node:fs/promises";
 import path from "node:path";
+import { deepFreeze } from "./core.ts";
 import type { SectionEntry } from "./format.ts";
 import { download, probeSecs } from "./worker.ts";
 
@@ -71,7 +72,7 @@ export async function fetchRecording(id: string): Promise<LibriVoxRecording> {
   // LibriVox's own section_number is the ordering key; positions are then
   // renumbered 1..n in that order rather than trusted as-is (feeds are
   // occasionally 0-based, gappy, or out of order).
-  const ordered = [...(book.sections ?? [])].sort(
+  const ordered = (book.sections ?? []).toSorted(
     (a, b) => Number(a.section_number) - Number(b.section_number),
   );
   const sections: LibriVoxSection[] = ordered.map((s, i) => ({
@@ -81,12 +82,12 @@ export async function fetchRecording(id: string): Promise<LibriVoxRecording> {
     listenUrl: normalizeListenUrl(s.listen_url ?? ""),
   }));
 
-  return {
+  return deepFreeze({
     id,
     url: book.url_librivox || feedUrl,
     title: book.title ?? "",
     sections,
-  };
+  });
 }
 
 async function isNonEmptyFile(file: string): Promise<boolean> {
@@ -113,32 +114,36 @@ export async function downloadSections(
   // audioDir's own name (expected to be "audio") is what the stored path is
   // relative to — this doesn't need the work dir itself, just its basename.
   const audioDirName = path.basename(audioDir);
-  const entries: SectionEntry[] = [];
-  for (const section of rec.sections) {
-    const filename = `${String(section.position).padStart(4, "0")}.mp3`;
-    const file = path.join(audioDir, filename);
-    const label = `${rec.title} #${section.position}`;
+  // One section at a time, on purpose (see the pacing note above): the
+  // generator yields an entry only once its file is on disk, and
+  // `Array.fromAsync` drains it in order, so the sequence is the accumulator.
+  async function* fetched(): AsyncGenerator<SectionEntry> {
+    for (const section of rec.sections) {
+      const filename = `${String(section.position).padStart(4, "0")}.mp3`;
+      const file = path.join(audioDir, filename);
+      const label = `${rec.title} #${section.position}`;
 
-    if (!(await isNonEmptyFile(file))) {
-      try {
-        await download(section.listenUrl, file, label, UA);
-      } catch {
-        // archive.org's per-item nodes are occasionally cold; one retry
-        // covers a transient miss, a second failure is a real problem.
-        await download(section.listenUrl, file, label, UA);
+      if (!(await isNonEmptyFile(file))) {
+        try {
+          await download(section.listenUrl, file, label, UA);
+        } catch {
+          // archive.org's per-item nodes are occasionally cold; one retry
+          // covers a transient miss, a second failure is a real problem.
+          await download(section.listenUrl, file, label, UA);
+        }
+        // Gentle pacing between downloads — archive.org is a shared public
+        // resource, not a CDN.
+        await sleep(500);
       }
-      // Gentle pacing between downloads — archive.org is a shared public
-      // resource, not a CDN.
-      await sleep(500);
-    }
 
-    entries.push({
-      position: section.position,
-      file: path.posix.join(audioDirName, filename),
-      secs: await probeSecs(file),
-      title: section.title,
-      reader: section.reader,
-    });
+      yield {
+        position: section.position,
+        file: path.posix.join(audioDirName, filename),
+        secs: await probeSecs(file),
+        title: section.title,
+        reader: section.reader,
+      };
+    }
   }
-  return entries;
+  return deepFreeze(await Array.fromAsync(fetched()));
 }

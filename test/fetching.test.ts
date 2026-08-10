@@ -2,7 +2,7 @@
 // aligner's success path runs against a fake interpreter that speaks the
 // worker's stdout contract. Everything here is behavior the other suites
 // can't reach without touching gutenberg.org, archive.org, or torch.
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,10 +10,15 @@ import path from "node:path";
 import { fetchGutenbergEpub } from "../src/gutenberg.ts";
 import { download, runAligner } from "../src/worker.ts";
 
-function mockFetch(t: any, impl: (url: string, init?: RequestInit) => Response) {
+function mockFetch(
+  t: TestContext,
+  impl: (url: string, init?: RequestInit) => Response,
+) {
   const original = globalThis.fetch;
-  globalThis.fetch = (async (input: any, init?: any) =>
-    impl(String(input), init)) as typeof fetch;
+  globalThis.fetch = (async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1],
+  ) => impl(String(input), init)) as typeof fetch;
   t.after(() => {
     globalThis.fetch = original;
   });
@@ -57,7 +62,10 @@ test("fetchGutenbergEpub() falls back from the -images edition to the plain one"
 
 test("fetchGutenbergEpub() throws when neither edition exists", async (t) => {
   mockFetch(t, () => new Response(null, { status: 404 }));
-  await assert.rejects(fetchGutenbergEpub("999999"), /no epub found for Gutenberg id 999999/);
+  await assert.rejects(
+    fetchGutenbergEpub("999999"),
+    /no epub found for Gutenberg id 999999/,
+  );
 });
 
 test("runAligner() parses the worker's stdout JSON on a clean exit", async (t) => {

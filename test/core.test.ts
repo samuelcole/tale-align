@@ -4,7 +4,6 @@ import {
   MAX_LEAD_S,
   MAX_TAIL_S,
   MIN_COVERAGE,
-  MIN_DOC_COVERAGE,
   MIN_MEDIAN_CONF,
   gateRefusal,
   judge,
@@ -73,7 +72,9 @@ test("paragraphs() returns an empty array when there are no anchored paragraphs"
 // ---------------------------------------------------------------------------
 
 /** A meta that clears every gate with room to spare. */
-function passingMeta(overrides: Partial<WorkerOut["meta"]> = {}): WorkerOut["meta"] {
+function passingMeta(
+  overrides: Partial<WorkerOut["meta"]> = {},
+): WorkerOut["meta"] {
   return {
     paras: 100,
     placed: 80,

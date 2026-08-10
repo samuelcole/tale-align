@@ -199,7 +199,11 @@ test("exports an epub with mimetype first/stored and the standard OEBPS layout",
   const entries = zip.getEntries();
 
   assert.equal(entries[0].entryName, "mimetype");
-  assert.equal(entries[0].header.method, 0, "mimetype must be stored, not deflated");
+  assert.equal(
+    entries[0].header.method,
+    0,
+    "mimetype must be stored, not deflated",
+  );
   assert.equal(zip.readAsText("mimetype"), "application/epub+zip");
 
   const names = new Set(entries.map((e) => e.entryName));
@@ -325,11 +329,14 @@ test("refuses to export a failed verdict, quoting the refusal sentence, unless f
   await saveDoc(dir, doc);
 
   const outPath = path.join(dir, "out.epub");
-  await assert.rejects(() => exportEpub(dir, outPath), (err: Error) => {
-    assert.match(err.message, /alignment was refused/);
-    assert.ok(err.message.includes(refusalSentence), err.message);
-    return true;
-  });
+  await assert.rejects(
+    () => exportEpub(dir, outPath),
+    (err: Error) => {
+      assert.match(err.message, /alignment was refused/);
+      assert.ok(err.message.includes(refusalSentence), err.message);
+      return true;
+    },
+  );
 
   // { force: true } overrides the refusal and exports anyway.
   const result = await exportEpub(dir, outPath, { force: true });
@@ -368,7 +375,10 @@ test("throws an error naming the pipeline step for each missing doc field", asyn
   }[] = [
     { fields: [], expected: /no book — run `import` first/ },
     { fields: ["book"], expected: /no text — run `import` first/ },
-    { fields: ["book", "text"], expected: /no audio — run `fetch-audio` first/ },
+    {
+      fields: ["book", "text"],
+      expected: /no audio — run `fetch-audio` first/,
+    },
     {
       fields: ["book", "text", "audio"],
       expected: /no alignment — run `align` first/,

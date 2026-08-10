@@ -17,5 +17,8 @@ jobs:
       # unit suite never runs the acoustic model.
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg zip
       - run: pnpm install --frozen-lockfile
+      # Format + lint, including the no-`let` / no-parameter-reassign rules
+      # the source's immutability convention rests on.
+      - run: pnpm lint
       - run: pnpm build
       - run: pnpm test:coverage

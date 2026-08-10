@@ -81,13 +81,19 @@ test("loadDoc() throws when tale-align.json declares an unknown format", async (
       path.join(dir, DOC_FILE),
       JSON.stringify({ format: "some-other-format/v9", generator: "x" }),
     );
-    await assert.rejects(() => loadDoc(dir), /unknown format "some-other-format\/v9"/);
+    await assert.rejects(
+      () => loadDoc(dir),
+      /unknown format "some-other-format\/v9"/,
+    );
   });
 });
 
 test("saveDoc() always stamps the current GENERATOR, overwriting whatever was passed in", async () => {
   await withTempDir(async (dir) => {
-    const doc = { format: FORMAT, generator: "some-stale-generator/0.0.1" } as Doc;
+    const doc = {
+      format: FORMAT,
+      generator: "some-stale-generator/0.0.1",
+    } as Doc;
     await saveDoc(dir, doc);
     const loaded = await loadDoc(dir);
     assert.equal(loaded.generator, GENERATOR);

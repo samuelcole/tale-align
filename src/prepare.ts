@@ -9,6 +9,10 @@
  * ids ARE the contract, and rewriting them would orphan whatever the caller
  * keyed on them. Anything else gets anchors baked, the way the Gutenberg
  * importer bakes them.
+ *
+ * Nothing here mutates a value it was handed; the one exception is the cheerio
+ * DOM, whose API *is* mutation (`.attr()`), applied only to a tree this module
+ * parsed itself and reads back out as a string.
  */
 
 import * as cheerio from "cheerio";
@@ -32,10 +36,8 @@ export function anchorText(input: string, kind: "html" | "txt"): string {
   if ($("p[id]").length > 0) {
     return input;
   }
-  let n = 0;
-  $("p").each((_i, p) => {
-    n += 1;
-    $(p).attr("id", `text-p${n}`);
+  $("p").each((i, p) => {
+    $(p).attr("id", `text-p${i + 1}`);
   });
   const body = $("body").html() ?? input;
   return $("section[id]").length > 0

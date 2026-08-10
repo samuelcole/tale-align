@@ -66,6 +66,13 @@ Every stage speaks through one versioned JSON document — see
 epub is cut at paragraphs today, and a finer cut is a re-derive from the
 stored words, never a re-align.
 
+Everything the library hands back — a loaded document, an aligner's sync
+map, a recording, an anchored book — comes back deep-frozen (`deepFreeze` is
+exported for your own values). Build the next value from one instead of
+editing it: `saveDoc(dir, { ...doc, audio })`, never `doc.audio = …`. Under
+ESM's strict mode the second throws, which is the point — a result you
+edited was never the result anything else saw.
+
 ## Quickstart
 
 Requirements: Node ≥ 22.18, Python 3.12, `ffmpeg` on PATH.

@@ -15,7 +15,13 @@
  * verdict unless forced. See FORMAT.md for the document the stages speak.
  */
 
-import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import {
   judge,
@@ -29,7 +35,13 @@ import {
   STREAM_SECS,
 } from "./core.ts";
 import { exportEpub } from "./epub.ts";
-import { type Doc, loadDoc, saveDoc, type SectionEntry, sha256 } from "./format.ts";
+import {
+  type Doc,
+  loadDoc,
+  saveDoc,
+  type SectionEntry,
+  sha256,
+} from "./format.ts";
 import {
   epubIdentity,
   epubToAnchored,
@@ -88,19 +100,24 @@ async function cmdFetchText() {
   await mkdir(dir, { recursive: true });
   const doc = await loadDoc(dir);
   await writeFile(path.join(dir, "book.epub"), epub);
-  doc.book = {
-    ...ident,
-    source: {
-      kind: "gutenberg",
-      id,
-      url: `https://www.gutenberg.org/ebooks/${id}`,
-    },
-  };
+  // Every stage writes the *next* document rather than editing the one it
+  // read (which comes back frozen). `undefined` is how a field is dropped:
+  // JSON.stringify omits it, so the file reads exactly as a delete would.
   // The anchored text is derived from the epub at align time; a new epub
   // orphans both the derivation and any timings computed against it.
-  delete doc.text;
-  delete doc.alignment;
-  await saveDoc(dir, doc);
+  await saveDoc(dir, {
+    ...doc,
+    book: {
+      ...ident,
+      source: {
+        kind: "gutenberg",
+        id,
+        url: `https://www.gutenberg.org/ebooks/${id}`,
+      },
+    },
+    text: undefined,
+    alignment: undefined,
+  });
   console.log(
     `✓ ${ident.title}${ident.author ? ` — ${ident.author}` : ""}\n  book.epub → ${dir}`,
   );
@@ -114,16 +131,38 @@ async function cmdFetchAudio() {
   const rec = await fetchRecording(id);
   await mkdir(path.join(dir, "audio"), { recursive: true });
   const sections = await downloadSections(rec, path.join(dir, "audio"));
-  doc.audio = {
-    source: { kind: "librivox", id, url: rec.url },
-    sections,
-  };
-  delete doc.alignment; // new audio, stale times
-  await saveDoc(dir, doc);
+  await saveDoc(dir, {
+    ...doc,
+    audio: {
+      source: { kind: "librivox", id, url: rec.url },
+      sections,
+    },
+    alignment: undefined, // new audio, stale times
+  });
   const total = sections.reduce((s, x) => s + x.secs, 0);
   console.log(
     `✓ ${rec.title}\n  ${sections.length} sections, ${fmtSecs(total)} → ${dir}/audio/`,
   );
+}
+
+/** Identity a source knows about itself — an epub has one, a text file
+ *  doesn't. */
+type Identity = { title: string; author: string | null; language: string };
+
+/** The anchored body a `prepare` run stores, and that identity, decided
+ *  together in one expression (`--epub` wins) so neither is a variable that
+ *  gets written twice. */
+async function anchoredSource(
+  epubPath: string | undefined,
+  textPath: string,
+): Promise<{ body: string; identity: Identity | null }> {
+  if (epubPath) {
+    const book = epubToAnchored(await readFile(epubPath));
+    return { body: book.body, identity: book };
+  }
+  const raw = await readFile(textPath, "utf8");
+  const kind = textPath.toLowerCase().endsWith(".txt") ? "txt" : "html";
+  return { body: anchorText(raw, kind), identity: null };
 }
 
 async function cmdPrepare() {
@@ -131,65 +170,66 @@ async function cmdPrepare() {
   const textPath = val("text");
   const epubPath = val("epub");
   if (!textPath && !epubPath) {
-    throw new Error("prepare needs --text <file.html|.txt> or --epub <file.epub>");
+    throw new Error(
+      "prepare needs --text <file.html|.txt> or --epub <file.epub>",
+    );
   }
   const audioDir = need("audio-dir");
-  let body: string;
-  let fromEpub: { title: string; author: string | null; language: string } | null =
-    null;
-  if (epubPath) {
-    const book = epubToAnchored(await readFile(epubPath));
-    body = book.body;
-    fromEpub = book;
-  } else {
-    const raw = await readFile(textPath as string, "utf8");
-    const kind = (textPath as string).toLowerCase().endsWith(".txt")
-      ? "txt"
-      : "html";
-    body = anchorText(raw, kind);
-  }
+  const { body, identity } = await anchoredSource(epubPath, textPath as string);
   const frags = paragraphs(body);
   if (frags.length === 0) {
     throw new Error(`${epubPath ?? textPath}: no paragraphs found to anchor`);
   }
   const files = (await readdir(audioDir))
     .filter((f) => /\.mp3$/i.test(f))
-    .sort();
+    .toSorted();
   if (files.length === 0) {
-    throw new Error(`${audioDir}: no .mp3 files (playing order = filename sort)`);
+    throw new Error(
+      `${audioDir}: no .mp3 files (playing order = filename sort)`,
+    );
   }
   await mkdir(path.join(dir, "audio"), { recursive: true });
   const doc = await loadDoc(dir);
   await writeFile(path.join(dir, "book.html"), body);
   const sourceFile = path.basename((epubPath ?? textPath) as string);
   const title =
-    val("title") ?? fromEpub?.title ?? sourceFile.replace(/\.[a-z]+$/i, "");
-  doc.book = {
-    title,
-    author: val("author") ?? fromEpub?.author ?? null,
-    language: val("language") ?? fromEpub?.language ?? "en",
-    source: { kind: "local", id: sourceFile, url: "" },
-  };
-  doc.text = { file: "book.html", sha256: sha256(body), paragraphs: frags.length };
-  const sections: SectionEntry[] = [];
-  for (const [i, f] of files.entries()) {
-    const name = `${String(i + 1).padStart(4, "0")}.mp3`;
-    const target = path.join(dir, "audio", name);
-    await copyFile(path.join(audioDir, f), target);
-    sections.push({
-      position: i + 1,
-      file: path.posix.join("audio", name),
-      secs: await probeSecs(target),
-      title: null,
-      reader: val("reader") ?? null,
-    });
+    val("title") ?? identity?.title ?? sourceFile.replace(/\.[a-z]+$/i, "");
+  // Copy the files in playing order, one at a time — each entry is yielded
+  // once its mp3 is on disk and probed, and the sequence is the accumulator.
+  async function* copied(): AsyncGenerator<SectionEntry> {
+    for (const [i, f] of files.entries()) {
+      const name = `${String(i + 1).padStart(4, "0")}.mp3`;
+      const target = path.join(dir, "audio", name);
+      await copyFile(path.join(audioDir, f), target);
+      yield {
+        position: i + 1,
+        file: path.posix.join("audio", name),
+        secs: await probeSecs(target),
+        title: null,
+        reader: val("reader") ?? null,
+      };
+    }
   }
-  doc.audio = {
-    source: { kind: "local", id: path.basename(audioDir), url: "" },
-    sections,
-  };
-  delete doc.alignment; // new inputs, stale times
-  await saveDoc(dir, doc);
+  const sections = await Array.fromAsync(copied());
+  await saveDoc(dir, {
+    ...doc,
+    book: {
+      title,
+      author: val("author") ?? identity?.author ?? null,
+      language: val("language") ?? identity?.language ?? "en",
+      source: { kind: "local", id: sourceFile, url: "" },
+    },
+    text: {
+      file: "book.html",
+      sha256: sha256(body),
+      paragraphs: frags.length,
+    },
+    audio: {
+      source: { kind: "local", id: path.basename(audioDir), url: "" },
+      sections,
+    },
+    alignment: undefined, // new inputs, stale times
+  });
   const total = sections.reduce((s, x) => s + x.secs, 0);
   console.log(
     `✓ ${title}\n  ${frags.length} anchored paragraphs, ` +
@@ -197,36 +237,51 @@ async function cmdPrepare() {
   );
 }
 
-async function cmdAlign() {
-  const dir = need("dir");
-  const doc = await loadDoc(dir);
-  if (!doc.text) {
-    // Stage 1 hands over a standard epub; anchoring is this stage's front
-    // half, because the anchor ids the JSON is keyed on are the alignment's
-    // contract with every downstream consumer.
-    const data = await readFile(path.join(dir, "book.epub")).catch(() => null);
-    if (!data) {
-      throw new Error(
-        `${dir}: no text — run \`tale-align fetch-text\` or \`prepare\` first`,
-      );
-    }
-    const book = epubToAnchored(data);
-    await writeFile(path.join(dir, "book.html"), book.body);
-    doc.book ??= {
+/**
+ * The document `align` works from, with its text half guaranteed: a work dir
+ * that only has the standard epub gets anchored here first, because the anchor
+ * ids the JSON is keyed on are the alignment's contract with every downstream
+ * consumer. Returns the next document rather than filling in the one it was
+ * handed — that one is frozen, and this way the caller can't miss the update.
+ */
+async function withAnchoredText(
+  dir: string,
+  doc: Doc,
+): Promise<Doc & { text: NonNullable<Doc["text"]> }> {
+  if (doc.text) {
+    return { ...doc, text: doc.text };
+  }
+  const data = await readFile(path.join(dir, "book.epub")).catch(() => null);
+  if (!data) {
+    throw new Error(
+      `${dir}: no text — run \`tale-align fetch-text\` or \`prepare\` first`,
+    );
+  }
+  const book = epubToAnchored(data);
+  await writeFile(path.join(dir, "book.html"), book.body);
+  const text = {
+    file: "book.html",
+    sha256: sha256(book.body),
+    paragraphs: paragraphs(book.body).length,
+  };
+  process.stderr.write(
+    `anchored ${text.paragraphs} paragraphs from book.epub\n`,
+  );
+  return {
+    ...doc,
+    book: doc.book ?? {
       title: book.title,
       author: book.author,
       language: book.language,
       source: { kind: "local", id: "book.epub", url: "" },
-    };
-    doc.text = {
-      file: "book.html",
-      sha256: sha256(book.body),
-      paragraphs: paragraphs(book.body).length,
-    };
-    process.stderr.write(
-      `anchored ${doc.text.paragraphs} paragraphs from book.epub\n`,
-    );
-  }
+    },
+    text,
+  };
+}
+
+async function cmdAlign() {
+  const dir = need("dir");
+  const doc = await withAnchoredText(dir, await loadDoc(dir));
   if (!doc.audio || doc.audio.sections.length === 0) {
     throw new Error(`${dir}: no audio — run \`tale-align fetch-audio\` first`);
   }
@@ -264,27 +319,29 @@ async function cmdAlign() {
   if (flag("dry")) {
     return;
   }
-  doc.alignment = {
-    model,
-    alignedAt: new Date().toISOString(),
-    textSha256: sha256(html),
-    phrases: out.phrases,
-    words: out.words,
-    meta: out.meta,
-    verdict: {
-      pass,
-      docCoverage: Math.round(1000 * docCoverage) / 1000,
-      refusal,
-      gates: {
-        minMedianConf: MIN_MEDIAN_CONF,
-        minCoverage: MIN_COVERAGE,
-        minDocCoverage: MIN_DOC_COVERAGE,
-        maxLeadS: MAX_LEAD_S,
-        maxTailS: MAX_TAIL_S,
+  await saveDoc(dir, {
+    ...doc,
+    alignment: {
+      model,
+      alignedAt: new Date().toISOString(),
+      textSha256: sha256(html),
+      phrases: out.phrases,
+      words: out.words,
+      meta: out.meta,
+      verdict: {
+        pass,
+        docCoverage: Math.round(1000 * docCoverage) / 1000,
+        refusal,
+        gates: {
+          minMedianConf: MIN_MEDIAN_CONF,
+          minCoverage: MIN_COVERAGE,
+          minDocCoverage: MIN_DOC_COVERAGE,
+          maxLeadS: MAX_LEAD_S,
+          maxTailS: MAX_TAIL_S,
+        },
       },
     },
-  };
-  await saveDoc(dir, doc);
+  });
   console.log(`  verdict recorded → ${dir}/tale-align.json`);
 }
 
