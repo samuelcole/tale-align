@@ -96,6 +96,7 @@ a rounded catalog integer here would skew every later clip boundary.
 ```jsonc
 {
   "model": "wav2vec2",              // acoustic backend: "wav2vec2" | "mms_fa"
+  "language": "fr",                 // optional; the tokenizer rule (default "en")
   "alignedAt": "2026-08-09T…Z",
   "textSha256": "…",              // hash of the text the times describe
   "phrases": { "<anchorId>": [[phraseIndex, beginSecs, confidence, section], …] },
@@ -127,6 +128,28 @@ no null placeholders.
 **`words`** is the archive cut: every aligned word's begin time. Any future
 granularity (coarser, finer, word karaoke) is a re-derive from this, never a
 re-align.
+
+**`language`** (optional; absent means `"en"`) names the tokenizer rule the
+times were computed under — a BCP-47 primary subtag, taken from
+`book.language` unless `align --language` overrode it. It matters to any
+consumer that re-derives the word cut from the text rather than reading the
+`words` array: a player highlighting word by word, an exporter re-splitting
+phrases. Both acoustic backends read a romanized lowercase `a-z` plus
+apostrophe alphabet, and there are two ways to get there:
+
+* `"en"` — delete everything outside `[a-z']`. Every alignment produced
+  before this field existed used this rule, so its absence is not a gap.
+* anything else — **fold** into that alphabet first (`é`→`e`, `ç`→`c`,
+  `œ`→`oe`, `æ`→`ae`, `’`→`'`: spell out the letters Unicode cannot
+  decompose, then NFKD and drop every combining mark), *then* delete what
+  is left over. Deleting without folding mangles the word the model is
+  listening for (`être`→`tre`) and erases any word made only of accented
+  letters — in French, that includes `à`.
+
+The phrase cut's abbreviation guard (the periods that don't end a phrase) is
+keyed on the same subtag: `fr` knows `Mme.`/`Mlle.`, a language with no set
+of its own uses English's. A consumer must apply the document's own
+`language`, not the reader's or the page's.
 
 **`textSha256`** binds the times to the exact text they were computed
 against. A consumer must verify it before pairing this alignment with a text

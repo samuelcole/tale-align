@@ -43,6 +43,7 @@ days-long re-align.
 I/O — a JSON job on stdin, the sync map as JSON on stdout (logs go to stderr):
   in:  {"frags": [["chapter-1-p1", "text of the paragraph"], ...],
         "sections": ["/tmp/…/0001.mp3", "/tmp/…/0002.mp3", ...],  # playing order
+        "language": "fr",  # optional; BCP-47 primary subtag, default "en"
         "model": "wav2vec2"}  # optional; "wav2vec2" (MIT, default) or "mms_fa" (CC-BY-NC)
   out: {"phrases": {"chapter-1-p1": [[phrase_index, begin, conf, section], ...], ...},
         "words":   {"chapter-1-p1": [[begin, "word", conf], ...], ...},
@@ -61,6 +62,7 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 
 import numpy as np
 import soundfile as sf
@@ -124,11 +126,80 @@ section_files = job["sections"]
 # the emission to a disk memmap; everything else keeps it resident, which is
 # faster — a zero-copy slice per align vs a memmap read+cast. See build_emission.
 STREAM = bool(job.get("stream"))
+# The text the book is written in, as a BCP-47 primary subtag — it decides how
+# words are normalized for the model's dictionary and which abbreviations don't
+# end a phrase (see FOLD and _ABBR below). A region-tagged "fr-FR" is French;
+# an absent or unreadable value is English, which is what every alignment
+# produced before this field existed assumed.
+LANGUAGE = str(job.get("language") or "en").lower().split("-")[0] or "en"
+if MODEL == "wav2vec2" and LANGUAGE != "en":
+    print(
+        f"warning: language {LANGUAGE!r} on the English-only wav2vec2 backend — "
+        'pass "model": "mms_fa" for a multilingual alignment',
+        file=sys.stderr,
+    )
+
+# Both acoustic backends read a romanized lowercase a-z + apostrophe alphabet,
+# so every word is normalized into it before the model sees it. HOW is a
+# language decision, and the two answers are not interchangeable:
+#
+#   * English deletes anything outside [a-z']. Every sync map this worker has
+#     ever produced was computed that way, and a stored map is read back by
+#     re-tokenizing the same text in the consumer's own runtime (a browser, an
+#     epub exporter) — so changing the rule under an English book moves its
+#     highlights onto the wrong words with no re-align to fix them. English
+#     therefore keeps the deletion, exactly.
+#   * Everything else FOLDS to that alphabet first (é→e, ç→c, œ→oe, æ→ae,
+#     ’→'). Deleting instead mangles the very word the model is listening for
+#     ("être" → "tre") and erases outright any word that is nothing but
+#     accented letters — in French that includes "à", one of the most frequent
+#     words in the book.
+FOLD = LANGUAGE != "en"
+# The Latin letters Unicode's own decomposition cannot take apart: a ligature
+# or a struck-through stem is one indivisible codepoint, so its romanization
+# has to be spelled out. Everything else (é, ç, ü, ñ, …) decomposes to a base
+# letter plus combining marks, which _fold drops wholesale.
+_TRANSLIT = str.maketrans(
+    {
+        "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "ß": "ss",
+        "ø": "o", "Ø": "O", "ð": "d", "Ð": "D", "þ": "th", "Þ": "TH",
+        "đ": "d", "Đ": "D", "ł": "l", "Ł": "L",
+        # The typographic apostrophe is the apostrophe: French elision writes
+        # l’esprit, and the aligner's dictionary holds "l'esprit".
+        "’": "'", "ʼ": "'",
+    }
+)
+
+
+def _fold(word: str) -> str:
+    """Transliterate a word toward the models' romanized alphabet: spell out the
+    indivisible letters, then decompose and drop every combining mark. Deliberately
+    a *fold*, not a strip — the caller still deletes whatever survives outside
+    [a-z']. Mirrored character-for-character by consumers that re-derive the word
+    cut from text (tale.fyi's browser highlight); see FORMAT.md."""
+    decomposed = unicodedata.normalize("NFKD", word.translate(_TRANSLIT))
+    return "".join(c for c in decomposed if unicodedata.category(c)[0] != "M")
+
+
+def normalize(word: str) -> str:
+    """One rendered token → the aligner's word, or "" if nothing survives."""
+    return re.sub(r"[^a-z']", "", (_fold(word) if FOLD else word).lower())
+
 
 # Abbreviations that end in a period but don't end a phrase — so we don't split
 # "Dr. Seward". A light guard; the word-level archive means an occasional odd
-# split is re-derivable, never a re-align.
-_ABBR = {"mr", "mrs", "ms", "dr", "st", "prof", "sr", "jr", "vs", "no", "mt"}
+# split is re-derivable, never a re-align. The set is per-language because the
+# titles are: French abbreviates Madame to "Mme." and Mademoiselle to "Mlle.",
+# and a phrase break there cuts a name in half. A language we have no set for
+# gets English's — the fold above is what actually matters to the acoustics,
+# and an unlisted abbreviation costs one extra phrase boundary, not a wrong one.
+_ABBR_EN = {"mr", "mrs", "ms", "dr", "st", "prof", "sr", "jr", "vs", "no", "mt"}
+_ABBR_FR = {
+    "m", "mm", "mme", "mmes", "mlle", "mlles", "me", "mgr",
+    "dr", "drs", "st", "ste", "sts", "stes",
+    "av", "apr", "cf", "chap", "vol", "no", "art", "fig", "ed", "env", "ibid",
+}
+_ABBR = _ABBR_FR if LANGUAGE == "fr" else _ABBR_EN
 _MIN_PHRASE = 4  # merge shorter fragments into the previous one, so a comma in
 # "red, white, and blue" doesn't spawn two-word highlights.
 
@@ -143,7 +214,7 @@ def phrases(text: str) -> list[str]:
     for k, tok in enumerate(toks):
         buf.append(tok)
         if tok[-1:] in ".?!;:,—" and k + 1 < len(toks):
-            core = re.sub(r"[^a-z]", "", tok.lower())
+            core = re.sub(r"[^a-z]", "", (_fold(tok) if FOLD else tok).lower())
             if tok[-1:] in ".?!;" and (core in _ABBR or len(core) <= 1):
                 continue
             out.append(buf)
@@ -172,7 +243,7 @@ wphrase: list[int] = []
 for i, fr in enumerate(frags):
     for j, phrase in enumerate(phrases(fr["text"])):
         for w in phrase.split():
-            nw = re.sub(r"[^a-z']", "", w.lower())
+            nw = normalize(w)
             if nw:
                 words.append(nw)
                 wpar.append(i)
@@ -622,6 +693,11 @@ def main():
                 "sections": len(section_files),
                 "device": DEV,
                 "model": MODEL,
+                # The tokenizer these times were computed with. A consumer that
+                # re-derives the word cut from the text has to normalize it the
+                # same way or its highlights land a word off; this is the record
+                # of which rule to use.
+                "language": LANGUAGE,
             },
         },
         sys.stdout,

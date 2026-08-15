@@ -289,8 +289,14 @@ async function cmdAlign() {
   }
   const totalSecs = doc.audio.sections.reduce((s, x) => s + x.secs, 0);
   const model = val("model") ?? "wav2vec2";
+  // The epub already said what language it is in (`book.language`, from its own
+  // `dc:language`), and the aligner needs it to normalize words the way that
+  // language reads — see runAligner. `--language` is for the document whose
+  // metadata lied, which is common enough in scanned public-domain epubs.
+  const language = val("language") ?? doc.book?.language ?? "en";
   process.stderr.write(
-    `aligning ${frags.length} paragraphs to ${fmtSecs(totalSecs)} of audio (${model})…\n`,
+    `aligning ${frags.length} paragraphs to ${fmtSecs(totalSecs)} of audio ` +
+      `(${model}, ${language})…\n`,
   );
   const out = await runAligner(
     frags,
@@ -299,6 +305,7 @@ async function cmdAlign() {
       python: val("python"),
       stream: totalSecs > config.streamSecs,
       model,
+      language,
     },
   );
   const { pass, docCoverage } = judge(out.meta);
@@ -320,6 +327,7 @@ async function cmdAlign() {
     ...doc,
     alignment: {
       model,
+      language,
       alignedAt: new Date().toISOString(),
       textSha256: sha256(html),
       phrases: out.phrases,
@@ -365,7 +373,8 @@ stage 1 — acquire (standard formats only: an epub + MP3s; swap in any source):
                           --audio-dir <dir> --dir <workdir>
                           [--title T] [--author A] [--reader R] [--language en]
 stage 2 — align (anchors the text, times every word, records the verdict):
-  tale-align align        --dir <workdir> [--python <bin>] [--model wav2vec2|mms_fa] [--dry]
+  tale-align align        --dir <workdir> [--python <bin>] [--model wav2vec2|mms_fa]
+                          [--language <tag>] [--dry]
   tale-align export       --dir <workdir> [--out <file.epub>] [--force]
 
 The aligner needs python + torch (see requirements.txt) and ffmpeg on

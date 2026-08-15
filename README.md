@@ -123,6 +123,29 @@ is skipped — then a bounded fine-align inside each anchor bracket recovers
 every word's begin time. Books too long to hold in RAM stream their
 emission to disk automatically.
 
+## Languages
+
+The book's own `dc:language` reaches the aligner (`align --language <tag>`
+overrides an epub whose metadata lies), and it decides how words are
+normalized for the model's romanized dictionary. English strips to `[a-z']`.
+Every other language **folds** its accents into that alphabet first — `é`→`e`,
+`ç`→`c`, `œ`→`oe`, `æ`→`ae`, `’`→`'` — because deleting them instead mangles
+the word the model is listening for (`être`→`tre`) and erases outright any
+word made only of accented letters, which in French includes `à`. The phrase
+cut's abbreviation guard is keyed the same way: French knows `Mme.` and
+`Mlle.`; a language with no set of its own borrows English's.
+
+English is left exactly as it was, deletion and all. A stored alignment is
+read back by re-tokenizing the same text in the consumer's own runtime, so
+changing that rule under an already-aligned book would move its highlights
+with no re-align to put them back. The rule in force rides along in the
+document (`alignment.language`; see [FORMAT.md](FORMAT.md)) so a consumer
+knows which one to apply.
+
+Non-English wants `--model mms_fa`: the default backend is English-only, and
+the worker says so on stderr rather than quietly aligning French against an
+English label set. See Licensing for what that opt-in costs.
+
 ## Licensing
 
 The **code** is MIT, and so is the **default pipeline end to end**: the

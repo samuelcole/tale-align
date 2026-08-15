@@ -27,5 +27,8 @@ export type WorkerOut = {
     /** Which acoustic backend produced this ("wav2vec2" | "mms_fa");
      *  absent from older workers' output. */
     model?: string;
+    /** The language rule the words were normalized under (a BCP-47 primary
+     *  subtag); absent from older workers' output, which was always English. */
+    language?: string;
   };
 };

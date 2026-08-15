@@ -80,6 +80,13 @@ export type Doc = {
   alignment?: {
     /** Acoustic backend the worker ran ("wav2vec2" | "mms_fa"). */
     model: string;
+    /** The language rule the words were normalized under (a BCP-47 primary
+     *  subtag). Optional: a document written before this field existed was
+     *  aligned as English, which is what its absence means. A consumer that
+     *  re-derives the word cut from the text — a browser highlighting along,
+     *  an exporter re-splitting phrases — has to normalize it the same way or
+     *  land a word off, so this records which way. */
+    language?: string;
     alignedAt: string;
     /** Hash of the text the times were computed against — export refuses a
      *  mismatch, so an edited text can never ship yesterday's timings. */

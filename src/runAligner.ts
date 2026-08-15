@@ -44,11 +44,24 @@ export function workerPath(): string {
  *  stays commercially clean) or "mms_fa" (Meta's multilingual aligner,
  *  CC-BY-NC 4.0, usually somewhat stronger — an explicit opt-in). Either
  *  way the weights auto-download from torchaudio's hosting on first use;
- *  none ship with this package. */
+ *  none ship with this package.
+ *
+ *  `language` is the text's own language (an epub's `dc:language`, a
+ *  document's `book.language`) and decides how words are normalized for the
+ *  model's romanized dictionary: English strips to [a-z'] — bit-for-bit what
+ *  every alignment produced before this option existed — and every other
+ *  language folds its accents into that alphabet first, because deleting them
+ *  turns "être" into "tre" and "à" into nothing at all. A region subtag is
+ *  fine here ("fr-FR"); only the primary one reaches the worker. */
 export async function runAligner(
   frags: Fragment[],
   sections: string[],
-  opts?: { python?: string; stream?: boolean; model?: string },
+  opts?: {
+    python?: string;
+    stream?: boolean;
+    model?: string;
+    language?: string;
+  },
 ): Promise<WorkerOut> {
   const python = opts?.python ?? config.python;
   const proc = spawn(python, [workerPath()], {
@@ -75,11 +88,20 @@ export async function runAligner(
       sections,
       stream: opts?.stream ?? false,
       model: opts?.model ?? "wav2vec2",
+      language: primarySubtag(opts?.language),
     }),
   );
   proc.stdin.end();
   await exited;
   return deepFreeze(parseWorkerOut(await collected));
+}
+
+/** The primary subtag of a BCP-47 tag, lowercased — "fr-FR", "FR" and "fr"
+ *  are one language, and the worker's rules are keyed on that one word.
+ *  Missing or empty is "en": the catalog was implicitly English before this
+ *  option existed, and the English path is the unchanged one. */
+function primarySubtag(language: string | undefined): string {
+  return language?.toLowerCase().split("-")[0] || "en";
 }
 
 /** The worker's stdout, or the one error a caller can act on. */
