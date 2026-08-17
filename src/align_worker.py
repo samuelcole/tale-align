@@ -70,7 +70,20 @@ import torch
 import torchaudio
 
 CH = 40 * 16000  # acoustic forward-pass chunk (40s) — fast, low-memory
-CHUNK = 45  # phase-1 text step, in words
+# Phase-1 text step, in words — a ceiling now, not a constant. 45 words is
+# ~20s of speech, the right stride for a book, and every confidence this
+# aligner has ever recorded was measured at it. But it is also the *whole*
+# document when the document is a 125-word blog post: three swings, and a
+# single missed lock leaves phase 2 with one anchor and nothing to bracket,
+# which reports as a 0.00 median — a refusal that reads like a bad recording.
+# So the step follows the text, aiming for TARGET_ANCHORS locks, and stops
+# shrinking at CHUNK_MIN, below which a chunk carries too little to be
+# distinctive (probe() already wants max(8, n//2) words to land).
+# The ceiling is what keeps books bit-for-bit: any text of 270 words or more
+# resolves to 45 exactly as before.
+CHUNK_MAX = 45
+CHUNK_MIN = 12
+TARGET_ANCHORS = 6
 PROBE_S = 90  # phase-1 local-search probe window, in seconds
 LOCK = 0.6  # phase-1 score to accept a chunk as an anchor
 # A lost whole-book chain gets one stronger, bounded way back in: compare a
@@ -249,6 +262,8 @@ for i, fr in enumerate(frags):
                 wpar.append(i)
                 wphrase.append(j)
 W = len(words)
+# The step can only be chosen once the text is known; see CHUNK_MAX above.
+CHUNK = max(CHUNK_MIN, min(CHUNK_MAX, W // TARGET_ANCHORS))
 
 DEV = "mps" if torch.backends.mps.is_available() else "cpu"
 # Half precision on the GPU ~1.7x the forward pass (the run's bottleneck) with no
@@ -532,11 +547,20 @@ def main():
     anchors: list[tuple[int, int]] = []  # (word_index, precise begin frame)
     wi, t, skips = 0, 0, 0
     last_good_wi, last_good_t = 0, 0
+    # A candidate needs enough audio after it to be worth probing — 30s for a
+    # book, but never more than a third of a short recording. The fixed 30s
+    # forbade the last half-minute of any file from hosting an anchor, which is
+    # invisible at book scale and fatal at post scale: lock the opening of a
+    # 53s recording, land the expected-next mark near its end, and every
+    # remaining candidate falls in the forbidden tail — the loop then runs to
+    # completion without probing even once, leaving one anchor and a 0.00
+    # median. Audio of 90s or more is unaffected (a third of it exceeds 30s).
+    tail_room = min(int(30 * fps), F // 3)
     while wi < W - 5:
         best = (-1.0, None)  # (score, aligned_words)
         for df in range(int(-25 * fps), int(75 * fps), int(3 * fps)):
             ff = t + df
-            if ff < 0 or ff + int(30 * fps) >= F:
+            if ff < 0 or ff + tail_room >= F:
                 continue
             sc, aw = probe(emission, ratio, ff, wi, CHUNK)
             if sc > best[0]:
