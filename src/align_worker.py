@@ -670,11 +670,36 @@ def main():
             if frags[wpar[g]]["id"] == aid
         )
 
+    def para_section(aid: str) -> int:
+        """The section the paragraph's earliest phrase was placed in."""
+        return min(phrase_rows[aid], key=lambda r: r[1])[3]
+
     span_cov, lead, tail = 0.0, audio_s, audio_s
     if placed:
         first_i, last_i = real.index(placed[0]), real.index(placed[-1])
         span_cov = len(placed) / (last_i - first_i + 1)
-        lead = para_begin(placed[0]["id"])
+        # Discount whole leading sections that placed nothing, and measure the
+        # lead from the start of the first section that did.
+        #
+        # A LibriVox dramatic reading opens by reading out who plays whom, and
+        # that cast list is correctly absent from the book, so it correctly
+        # locks nothing — but as absolute seconds from t=0 it reads as minutes
+        # of narrated content that failed to align, which is the opposite of
+        # what MAX_LEAD_S is for. Measured across tale.fyi's catalog
+        # (2026-09-14): of 194 books with narration and no read-along, 14 were
+        # refused on lead alone at 125-300s while placing 96-99% of the
+        # document at span 1.000 — eleven of them plays, Hamlet and Othello
+        # among them.
+        #
+        # Deliberately narrow. Only a *complete* leading section that placed
+        # nothing is discounted, and a section can only be three things: a cast
+        # list, a reader's introduction, or front matter this edition does not
+        # carry. A spoken intro *inside* the first placed section still counts
+        # in full, which is the case the gate was built for — a book whose
+        # opening chapter fails to lock must still be caught.
+        opening = para_section(placed[0]["id"])
+        skipped = bounds[opening - 1] * ratio if opening >= 1 else 0.0
+        lead = max(0.0, para_begin(placed[0]["id"]) - skipped)
         # Measure omitted audio after the final aligned word, not after the
         # beginning of its paragraph. A long final paragraph is fully narrated
         # content, not an apparent several-minute unaligned tail.
@@ -682,7 +707,10 @@ def main():
         log(
             f"  span: {len(placed)}/{last_i - first_i + 1} placed in "
             f"[{placed[0]['id']}..{placed[-1]['id']}] "
-            f"({100 * span_cov:.0f}%), lead {lead:.0f}s, tail {tail:.0f}s"
+            f"({100 * span_cov:.0f}%), lead {lead:.0f}s"
+            + (f" (+{skipped:.0f}s in {opening - 1} unplaced leading section"
+               f"{'s' if opening > 2 else ''})" if skipped > 0 else "")
+            + f", tail {tail:.0f}s"
         )
     # monotonicity across all phrase begins in document order
     flat = [

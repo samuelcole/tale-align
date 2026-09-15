@@ -31,7 +31,7 @@ by five quality gates before it ships:
 | median confidence | ≥ 0.8 | a genuinely wrong alignment |
 | span coverage | ≥ 0.9 | holes between the first and last placed paragraph |
 | document coverage | ≥ 0.5 | the "confidently wrong" partial lock |
-| lead | ≤ 125s | a broken opening |
+| lead | ≤ 125s | a broken opening (whole unplaced leading sections — a cast list, a reader's intro — are discounted first) |
 | tail | ≤ 120s | a broken ending |
 
 A refusal is a first-class result: the verdict (and the bar it missed, in a
