@@ -41,6 +41,13 @@ import type { WorkerOut } from "./types/WorkerOut.ts";
  * is what actually keeps a genuinely broken opening out. ~2 min absorbs a
  * recording's own intro and a section title without letting a real gap through.
  *
+ * `lead_s` arrives already discounted for whole leading sections that placed
+ * nothing (see align_worker.py): a dramatic reading's cast list is narrated,
+ * correctly absent from the book, and correctly locks nothing — counting it
+ * here would be the exact inverse of what this bar is for. An intro *inside*
+ * the first placed section still counts in full, so the broken opening this
+ * catches is still caught.
+ *
  * `MIN_DOC_COVERAGE`: span-coverage has a blind spot the ends-gate misses. When
  * phase 1 locks only a small stretch of a book — a book placed only the first
  * ~10% of its paragraphs, smeared confidently across the whole audio at the
