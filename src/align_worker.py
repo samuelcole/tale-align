@@ -56,6 +56,7 @@ requirements.txt.
 """
 
 import atexit
+import hashlib
 import json
 import os
 import re
@@ -266,6 +267,37 @@ W = len(words)
 CHUNK = max(CHUNK_MIN, min(CHUNK_MAX, W // TARGET_ANCHORS))
 
 DEV = "mps" if torch.backends.mps.is_available() else "cpu"
+
+def _self_fingerprint():
+    """What this worker actually is, asked of the worker itself.
+
+    A verdict is a function of the thing that produced it, and a caller that
+    reports its own `package.json` is describing a sibling, not the process that
+    ran. On 2026-09-14 a production alignment ran against a `dist/` hand-copied
+    over the installed package: byte-identical to what shipped, but nothing in
+    the version string could have said so either way.
+
+    So report two things. The version answers "which release", and is read from
+    the package this file is installed inside. The digest answers "which code",
+    and is this file's own bytes — which is the half that catches a hand-copy,
+    a local edit, or a patched install, none of which move a version number.
+    """
+    version = "unknown"
+    try:
+        manifest = os.path.join(os.path.dirname(__file__), "..", "package.json")
+        with open(manifest, encoding="utf-8") as fh:
+            version = json.load(fh).get("version") or "unknown"
+    except Exception:
+        pass
+    try:
+        with open(__file__, "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()[:12]
+    except Exception:
+        digest = "unknown"
+    return version, digest
+
+
+VERSION, WORKER_SHA = _self_fingerprint()
 # Half precision on the GPU ~1.7x the forward pass (the run's bottleneck) with no
 # measurable hit to alignment — the emission is argmax-driven and we cast back to
 # float32 for the CPU aligner. CPU stays fp32 (no half-kernel win there).
@@ -745,6 +777,13 @@ def main():
                 "sections": len(section_files),
                 "device": DEV,
                 "model": MODEL,
+                # What judged this book, so a stored verdict stays interpretable
+                # after any of it moves. torch and torchaudio are floor-pinned in
+                # requirements.txt, so they drift without anything being released.
+                "tale_align": VERSION,
+                "worker_sha": WORKER_SHA,
+                "torch": torch.__version__,
+                "torchaudio": torchaudio.__version__,
                 # The tokenizer these times were computed with. A consumer that
                 # re-derives the word cut from the text has to normalize it the
                 # same way or its highlights land a word off; this is the record
