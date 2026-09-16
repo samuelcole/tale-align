@@ -30,5 +30,25 @@ export type WorkerOut = {
     /** The language rule the words were normalized under (a BCP-47 primary
      *  subtag); absent from older workers' output, which was always English. */
     language?: string;
+    /**
+     * What produced this verdict. All four are absent from older workers'
+     * output, so a consumer records "unknown" rather than assuming today's.
+     *
+     * A refusal is only interpretable against the thing that refused: the same
+     * book and the same recording can pass one build and fail the next. These
+     * are reported by the worker rather than by its caller because the caller
+     * can only describe a sibling — it knows which package it resolved, not
+     * which code ran.
+     */
+    /** The tale-align release this worker is installed inside. */
+    tale_align?: string;
+    /** First 12 hex of sha256 over the worker's own source. Moves when the
+     *  code does, including for a hand-copied or locally patched install that
+     *  leaves the version untouched. */
+    worker_sha?: string;
+    /** Floor-pinned in requirements.txt, so these drift with no release:
+     *  they select the model bundle and the CTC kernels. */
+    torch?: string;
+    torchaudio?: string;
   };
 };
