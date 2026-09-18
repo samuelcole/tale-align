@@ -29,6 +29,6 @@ jobs:
       # pin edited without a re-lock, or a lock edited without an export, can't
       # merge. `uv lock` keeps existing pins that still satisfy the spec, so an
       # unrelated upstream release doesn't turn this red.
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0
       - run: pnpm py:lock
       - run: git diff --exit-code uv.lock requirements.lock
