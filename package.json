@@ -30,10 +30,14 @@
   "files": [
     "dist",
     "requirements.txt",
+    "requirements.lock",
+    "pyproject.toml",
+    "uv.lock",
     "FORMAT.md"
   ],
   "scripts": {
     "build": "tsc && cp src/align_worker.py dist/align_worker.py",
+    "py:lock": "uv lock && uv export --format requirements.txt --no-emit-project --no-annotate -o requirements.lock",
     "prepublishOnly": "npm run build",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

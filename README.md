@@ -84,13 +84,18 @@ import type { Doc } from "tale-align/types/Doc";
 
 ## Quickstart
 
-Requirements: Node ≥ 22.18, Python 3.12, `ffmpeg` on PATH.
+Requirements: Node ≥ 22.18, Python 3.11 or 3.12, [`uv`](https://docs.astral.sh/uv/),
+`ffmpeg` on PATH.
 
 ```sh
 pnpm install && pnpm build
 
-# the aligner's own venv (torch ~2GB; model weights auto-download on first run)
-python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+# the aligner's own venv, installed from uv.lock — exact versions, hashes and
+# all (torch ~2GB; model weights auto-download on first run). Without uv, the
+# same lock in pip's shape:
+#   python3.12 -m venv .venv
+#   .venv/bin/pip install --require-hashes -r requirements.lock
+uv sync
 
 node dist/cli.js fetch-text  --gutenberg 41  --dir work/sleepy-hollow
 node dist/cli.js fetch-audio --librivox 428  --dir work/sleepy-hollow
@@ -122,6 +127,54 @@ un-narrated text (a preface, a translator's note) simply fails to lock and
 is skipped — then a bounded fine-align inside each anchor bracket recovers
 every word's begin time. Books too long to hold in RAM stream their
 emission to disk automatically.
+
+## Reproducing an alignment
+
+A verdict is a fact about a book *and* about the stack that judged it, so two
+things have to hold still.
+
+**The environment is locked.** `requirements.txt` is the readable spec;
+`uv.lock` is what installs, and `requirements.lock` is that same lock exported
+in pip's shape. Both pin every artifact, direct and transitive, to a version
+and a sha256 — for both platforms this runs on: macOS arm64 (PyPI's wheels,
+the MPS build) and Linux x86_64 (PyTorch's CPU index and its `+cpu` wheels,
+because the default Linux wheel drags the CUDA runtime into machines that have
+no GPU). Python 3.11 and 3.12 are both covered. Edit the pins in
+`pyproject.toml`, run `pnpm py:lock`, commit the diff; CI fails if the lock or
+the export has drifted from the spec.
+
+`uv sync` needs no flags — which index a package comes from is routed per
+package in `pyproject.toml`. A flat requirements file can't carry that routing,
+so installing `requirements.lock` with pip on **Linux** means naming the CPU
+index yourself, and only there:
+
+```sh
+pip install --require-hashes \
+  --index-url https://download.pytorch.org/whl/cpu \
+  --extra-index-url https://pypi.org/simple \
+  -r requirements.lock
+```
+
+**A torch or torchaudio bump is a model change.** torchaudio is not an
+ordinary dependency: the worker loads a `torchaudio.pipelines` constant whose
+weights URL is baked into the installed release, so which torchaudio is
+installed decides which checkpoint judges the book — and torch's CTC kernels
+and MPS backend decide the numbers that come back from it. Treat the bump the
+way you'd treat swapping the model: re-judge the books you care about, or at
+minimum expect verdicts to move. What the lock buys is that this can only ever
+happen as a commit somebody made, never as a side effect of when an
+environment happened to be created.
+
+**Every run says what judged it.** The worker reports its own stack in the
+document's `meta`: `tale_align` (the release), `worker_sha` (the worker file's
+own bytes, which catches a hand-copy that a version number can't), `model`,
+`device`, and the installed `torch` and `torchaudio` versions. Locking makes
+the environment stable; the fingerprint makes a stored verdict legible about
+which stack produced it. Neither substitutes for the other — a lock still
+changes when someone bumps it.
+
+The pair locked here — torch 2.14.0 / torchaudio 2.11.0 — is the one the
+current shipped alignments were produced on.
 
 ## Languages
 

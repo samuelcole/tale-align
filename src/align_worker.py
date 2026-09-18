@@ -50,9 +50,11 @@ I/O — a JSON job on stdin, the sync map as JSON on stdout (logs go to stderr):
         "meta": {"paras": N, "placed": M, "phrases": P, "median_conf": C,
                  "inversions": I, "audio_s": S, "sections": K, "device": "mps"}}
 
-Env: python 3.12, torch + torchaudio (model weights auto-download on first
-use: wav2vec2 ~360MB, MMS_FA ~1.2GB), soundfile, and ffmpeg on PATH. See
-requirements.txt.
+Env: python 3.11 or 3.12, torch + torchaudio (model weights auto-download on
+first use: wav2vec2 ~360MB, MMS_FA ~1.2GB), soundfile, numpy, and ffmpeg on
+PATH. requirements.txt is the readable spec; uv.lock and requirements.lock are
+the exact, hashed versions that install. A torchaudio bump moves the
+checkpoint, so it is a model change rather than a dependency bump.
 """
 
 import atexit
@@ -832,8 +834,10 @@ def main():
                 "device": DEV,
                 "model": MODEL,
                 # What judged this book, so a stored verdict stays interpretable
-                # after any of it moves. torch and torchaudio are floor-pinned in
-                # requirements.txt, so they drift without anything being released.
+                # after any of it moves. torch and torchaudio are locked now
+                # (uv.lock), so they move only in a commit — but a verdict
+                # outlives the environment that produced it, and old verdicts
+                # predate the lock entirely, so each one still names its own.
                 "tale_align": VERSION,
                 "worker_sha": WORKER_SHA,
                 "torch": torch.__version__,

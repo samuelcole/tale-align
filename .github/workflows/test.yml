@@ -22,3 +22,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test:coverage
+      # The python half is locked too, because torchaudio *is* the model (see
+      # the README's "Reproducing an alignment"). Nothing is installed here —
+      # 2GB of torch for a suite that never runs the acoustic model — this only
+      # re-derives uv.lock and its pip-shaped export from pyproject.toml, so a
+      # pin edited without a re-lock, or a lock edited without an export, can't
+      # merge. `uv lock` keeps existing pins that still satisfy the spec, so an
+      # unrelated upstream release doesn't turn this red.
+      - uses: astral-sh/setup-uv@v10
+      - run: pnpm py:lock
+      - run: git diff --exit-code uv.lock requirements.lock
