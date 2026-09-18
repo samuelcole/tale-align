@@ -304,11 +304,12 @@ VERSION, WORKER_SHA = _self_fingerprint()
 # file name as the section id, so the apparatus is legible from the id alone:
 # `endnotes-p12`, `appendix-2-p4`, `preface-p1`, `dramatis-personae-p3`.
 APPARATUS_RE = re.compile(
-    r"^(endnote|endnotes|appendix|appendices|glossary|notes|note|"
-    r"translator-note|translators-note|preface|introduction|foreword|"
-    r"afterword|dedication|epigraph|dramatis-personae|bibliography|index|"
-    r"colophon|loi|halftitle|halftitlepage|titlepage|imprint|copyright)"
-    r"(-|$)"
+    r"^(endnote|endnotes|footnote|footnotes|appendix|appendices|glossary|"
+    r"notes|note|translator-note|translators-note|translators-preface|"
+    r"translator-preface|prefatory-note|editors-note|editor-note|preface|"
+    r"introduction|foreword|afterword|dedication|epigraph|dramatis-personae|"
+    r"bibliography|index|advertisement|colophon|loi|halftitle|halftitlepage|"
+    r"titlepage|imprint|copyright)(-|$)"
 )
 # Half precision on the GPU ~1.7x the forward pass (the run's bottleneck) with no
 # measurable hit to alignment — the emission is argmax-driven and we cast back to
