@@ -1,6 +1,17 @@
-# Forced-alignment worker (src/align_worker.py).
-# torch/torchaudio bundle the MMS_FA forced-alignment model (~1.2GB, cached on
-# first run). soundfile reads the decoded audio; ffmpeg must also be on PATH.
-torch>=2.11
-torchaudio>=2.11
+# Forced-alignment worker (src/align_worker.py) — the readable spec. What
+# actually installs is the lock beside it: `requirements.lock` (pip) or
+# `uv.lock` (uv), the same packages with every artifact pinned to a sha256. See
+# pyproject.toml for why, and the README's "Reproducing an alignment".
+#
+# torch/torchaudio are pinned exactly rather than floored: the installed
+# torchaudio release is where the forced-alignment pipelines' weights URLs
+# live, so it is the choice of acoustic model (wav2vec2 ~360MB by default,
+# MMS_FA ~1.2GB with --model mms_fa; both auto-download on first run). Moving
+# either line is a model change — re-judge, or expect verdicts to move.
+#
+# soundfile reads the decoded audio and numpy carries it; ffmpeg must also be
+# on PATH.
+torch==2.14.0
+torchaudio==2.11.0
 soundfile>=0.12
+numpy>=1.26

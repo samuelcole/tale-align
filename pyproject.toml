@@ -1,0 +1,63 @@
+# The aligner's Python stack — the half of this package that isn't JavaScript.
+#
+# `requirements.txt` beside this file is the human-readable spec; this file is
+# the same spec in the form `uv` can resolve, and `uv.lock` is what actually
+# installs: every artifact pinned to a version and a sha256, for both platforms
+# the worker runs on. `pnpm-lock.yaml` has always done that for the half of the
+# pipeline that decides nothing; this does it for the half that decides
+# everything.
+#
+# Why a lock matters more here than for an ordinary dependency: torchaudio *is*
+# the model. The worker loads a `torchaudio.pipelines` constant whose weights
+# URL is baked into the installed release, so which torchaudio is installed
+# chooses which checkpoint judges a book — and the CTC kernels and the MPS
+# backend in torch decide the numbers that come back from it. Under floor pins
+# two alignments months apart could be different experiments with nothing in
+# either run to say so. Bumping either line below is a model change: see the
+# README's "Reproducing an alignment".
+#
+# This is not a Python distribution and is never published — `package = false`
+# below. It exists to pin the venv the worker runs in.
+
+[project]
+name = "tale-align-worker"
+version = "0"
+description = "The Python environment src/align_worker.py runs in."
+requires-python = ">=3.11,<3.13"
+
+# torch and torchaudio are pinned exactly because they are the model; a
+# resolver is not allowed to move them behind a re-lock. soundfile and numpy
+# are I/O — floors here, exact in uv.lock like everything else.
+dependencies = [
+  "torch==2.14.0",
+  "torchaudio==2.11.0",
+  "soundfile>=0.12",
+  "numpy>=1.26",
+]
+
+[tool.uv]
+package = false
+
+# The two platforms the worker runs on, and the reason one lock can cover both:
+# resolve for these and nothing else, so the lock stays small and every entry in
+# it is an artifact something actually installs. macOS arm64 is the MPS path (a
+# dev machine, a local backfill); Linux x86_64 is the CPU path (a container, a
+# server).
+environments = [
+  "sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+# PyPI's Linux torch wheel drags the CUDA runtime — gigabytes — into a VM with
+# no GPU, so on Linux torch comes from PyTorch's own CPU index instead (the
+# `+cpu` local version you'll see in the lock). macOS has one wheel either way
+# and takes PyPI's, which is the MPS build. `explicit = true` keeps this index
+# from being consulted for anything but the two packages named below.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
