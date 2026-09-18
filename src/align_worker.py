@@ -760,7 +760,12 @@ def main():
     # The ends of the *narrative*: where the narration starts and stops among
     # the paragraphs that are not apparatus. Section ids come from Standard
     # Ebooks' own file names, so the apparatus is legible by prefix.
-    body = [fr for fr in real if not APPARATUS_RE.match(fr["id"])] or real
+    # ...unless the rule would swallow most of the book: a Gutenberg-sourced
+    # play once arrived with its whole text under a section named
+    # `dramatis-personae`. Apparatus is the margin of a book, never its bulk.
+    body = [fr for fr in real if not APPARATUS_RE.match(fr["id"])]
+    if len(body) * 2 < len(real):
+        body = real
     body_placed = [fr for fr in placed if fr in body]
     start_gap = end_gap = None
     if body_placed:
