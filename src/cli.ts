@@ -33,8 +33,8 @@ import { fetchRecording } from "./fetchRecording.ts";
 import {
   gateRefusal,
   judge,
+  MAX_END_GAP,
   MAX_LEAD_S,
-  MAX_TAIL_S,
   MIN_COVERAGE,
   MIN_DOC_COVERAGE,
   MIN_MEDIAN_CONF,
@@ -342,7 +342,7 @@ async function cmdAlign() {
           minCoverage: MIN_COVERAGE,
           minDocCoverage: MIN_DOC_COVERAGE,
           maxLeadS: MAX_LEAD_S,
-          maxTailS: MAX_TAIL_S,
+          maxEndGap: MAX_END_GAP,
         },
       },
     },

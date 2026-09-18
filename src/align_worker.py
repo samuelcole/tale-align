@@ -58,8 +58,8 @@ requirements.txt.
 import atexit
 import hashlib
 import json
-import os
 import re
+import os
 import subprocess
 import sys
 import time
@@ -298,6 +298,23 @@ def _self_fingerprint():
 
 
 VERSION, WORKER_SHA = _self_fingerprint()
+
+# Paragraph ids of the parts of a book a narrator legitimately leaves unread.
+# Standard Ebooks names its files by epub:type, and tale's importer keeps the
+# file name as the section id, so the apparatus is legible from the id alone:
+# `endnotes-p12`, `appendix-2-p4`, `preface-p1`, `dramatis-personae-p3`.
+# The most unplaced leading audio the lead measure will discount as a cast
+# list or a reader's introduction. Measured cast lists run 125-300 s.
+MAX_DISCOUNT_S = 300.0
+
+APPARATUS_RE = re.compile(
+    r"^(endnote|endnotes|footnote|footnotes|appendix|appendices|glossary|"
+    r"notes|note|translator-note|translators-note|translators-preface|"
+    r"translator-preface|prefatory-note|editors-note|editor-note|preface|"
+    r"introduction|foreword|afterword|dedication|epigraph|dramatis-personae|"
+    r"bibliography|index|advertisement|colophon|loi|halftitle|halftitlepage|"
+    r"titlepage|imprint|copyright)(-|$)"
+)
 # Half precision on the GPU ~1.7x the forward pass (the run's bottleneck) with no
 # measurable hit to alignment — the emission is argmax-driven and we cast back to
 # float32 for the CPU aligner. CPU stays fp32 (no half-kernel win there).
@@ -729,8 +746,18 @@ def main():
         # carry. A spoken intro *inside* the first placed section still counts
         # in full, which is the case the gate was built for — a book whose
         # opening chapter fails to lock must still be caught.
+        #
+        # And only a *short* one. A cast list is a few minutes; when the
+        # unplaced leading audio is longer than that it is not a cast list but
+        # an act — Edward II's recording opens with 49 minutes of Act 1 in the
+        # same section as the cast list, the act failed to lock, and the
+        # discount hid it: the book shipped with its first act silent
+        # (2026-09-17, eight plays). Past MAX_DISCOUNT_S the lead counts in
+        # full and the lead gate says what happened.
         opening = para_section(placed[0]["id"])
         skipped = bounds[opening - 1] * ratio if opening >= 1 else 0.0
+        if skipped > MAX_DISCOUNT_S:
+            skipped = 0.0
         lead = max(0.0, para_begin(placed[0]["id"]) - skipped)
         # Measure omitted audio after the final aligned word, not after the
         # beginning of its paragraph. A long final paragraph is fully narrated
@@ -744,6 +771,22 @@ def main():
                f"{'s' if opening > 2 else ''})" if skipped > 0 else "")
             + f", tail {tail:.0f}s"
         )
+    # The ends of the *narrative*: where the narration starts and stops among
+    # the paragraphs that are not apparatus. Section ids come from Standard
+    # Ebooks' own file names, so the apparatus is legible by prefix.
+    # ...unless the rule would swallow most of the book: a Gutenberg-sourced
+    # play once arrived with its whole text under a section named
+    # `dramatis-personae`. Apparatus is the margin of a book, never its bulk.
+    body = [fr for fr in real if not APPARATUS_RE.match(fr["id"])]
+    if len(body) * 2 < len(real):
+        body = real
+    body_placed = [fr for fr in placed if fr in body]
+    start_gap = end_gap = None
+    if body_placed:
+        first_b = body.index(body_placed[0])
+        last_b = body.index(body_placed[-1])
+        start_gap = round(first_b / len(body), 3)
+        end_gap = round((len(body) - 1 - last_b) / len(body), 3)
     # monotonicity across all phrase begins in document order
     flat = [
         row[1]
@@ -767,6 +810,17 @@ def main():
             "meta": {
                 "paras": len(real),
                 "placed": len(placed),
+                # How far into the narrative the narration starts, and how far
+                # short of its end it stops, as fractions of the narrative's
+                # paragraphs (see gate.ts, MAX_END_GAP). Apparatus is left out
+                # of the measure on both sides: endnotes, appendices, prefaces
+                # and cast lists are the parts a narrator legitimately skips,
+                # and they sit exactly at the ends, so counting them would
+                # refuse Beowulf for its endnotes while the measure exists to
+                # refuse The Idiot for stopping at volume one. None when
+                # nothing placed.
+                "start_gap": start_gap,
+                "end_gap": end_gap,
                 "span_coverage": round(span_cov, 3),
                 "lead_s": round(lead, 1),
                 "tail_s": round(tail, 1),

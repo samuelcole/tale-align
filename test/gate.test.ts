@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {
   gateRefusal,
   judge,
+  MAX_END_GAP,
   MAX_LEAD_S,
-  MAX_TAIL_S,
   MIN_COVERAGE,
   MIN_MEDIAN_CONF,
 } from "../src/gate.ts";
@@ -24,6 +24,8 @@ function passingMeta(
     span_coverage: 0.95,
     lead_s: 10,
     tail_s: 10,
+    start_gap: 0,
+    end_gap: 0,
     phrases: 500,
     median_conf: 0.9,
     device: "cpu",
@@ -59,9 +61,72 @@ test("judge() fails when lead_s is just above the gate", () => {
   assert.equal(pass, false);
 });
 
-test("judge() fails when tail_s is just above the gate", () => {
-  const { pass } = judge(passingMeta({ tail_s: MAX_TAIL_S + 0.01 }));
+test("judge() refuses to judge a worker that predates the ends measure", () => {
+  const meta = passingMeta();
+  delete meta.start_gap;
+  delete meta.end_gap;
+  assert.throws(() => judge(meta), /predates gate 0.6.0/);
+});
+
+test("judge() reads a nothing-placed null as the worst case", () => {
+  const { pass } = judge(passingMeta({ start_gap: null, end_gap: null }));
   assert.equal(pass, false);
+});
+
+// ---------------------------------------------------------------------------
+// the ends of the text (0.6.0)
+// ---------------------------------------------------------------------------
+
+const placedMeta = passingMeta;
+
+test("judge() lets a long tail through once the narration is known to reach the text's end", () => {
+  // Machiavelli's letters after The Prince: 87 minutes of audio past the
+  // last paragraph, every paragraph of the text placed.
+  const { pass } = judge(placedMeta({ tail_s: 5206 }));
+  assert.equal(pass, true);
+});
+
+test("judge() still refuses a long lead — the opening is where the first lock is least certain", () => {
+  const { pass } = judge(placedMeta({ lead_s: MAX_LEAD_S + 0.01 }));
+  assert.equal(pass, false);
+});
+
+test("judge() refuses a narration that stops short of the text's end", () => {
+  // The Idiot: volume one only, everything before it placed.
+  const { pass } = judge(placedMeta({ placed: 51, end_gap: 0.49 }));
+  assert.equal(pass, false);
+});
+
+test("judge() refuses a narration that starts too far into the text", () => {
+  const { pass } = judge(placedMeta({ start_gap: 0.06 }));
+  assert.equal(pass, false);
+});
+
+test("judge() passes a narration that starts and stops exactly on the 5% bars", () => {
+  const { pass } = judge(placedMeta({ start_gap: 0.05, end_gap: 0.05 }));
+  assert.equal(pass, true);
+  assert.equal(MAX_END_GAP, 0.05);
+});
+
+test("judge() does not let the ends gate replace paragraph coverage", () => {
+  // Reaches both ends but places only 40%: still a partial.
+  const { pass } = judge(placedMeta({ placed: 40 }));
+  assert.equal(pass, false);
+});
+
+test("gateRefusal() says where the narration stopped when that is the failing gate", () => {
+  const meta = placedMeta({ end_gap: 0.49 });
+  const { docCoverage } = judge(meta);
+  const msg = gateRefusal(meta, docCoverage);
+  assert.match(msg, /stops 49% short/);
+  assert.match(msg, /5%/);
+});
+
+test("gateRefusal() says where the narration started when that is the failing gate", () => {
+  const meta = placedMeta({ start_gap: 0.2 });
+  const { docCoverage } = judge(meta);
+  const msg = gateRefusal(meta, docCoverage);
+  assert.match(msg, /starts 20% of the way/);
 });
 
 test("judge() passes when median_conf sits exactly on the gate (>=)", () => {
@@ -86,8 +151,8 @@ test("judge() passes when lead_s sits exactly on the gate (<=)", () => {
   assert.equal(pass, true);
 });
 
-test("judge() passes when tail_s sits exactly on the gate (<=)", () => {
-  const { pass } = judge(passingMeta({ tail_s: MAX_TAIL_S }));
+test("judge() no longer has a tail gate: audio past the narrative is an appendix", () => {
+  const { pass } = judge(passingMeta({ tail_s: 100_000 }));
   assert.equal(pass, true);
 });
 
@@ -127,12 +192,12 @@ test("gateRefusal() names lead_s's own value and the bar when it is the only fai
   assert.match(msg, /125/);
 });
 
-test("gateRefusal() names tail_s's own value and the bar when it is the only failing gate", () => {
-  const meta = passingMeta({ tail_s: 300 });
+test("gateRefusal() names the end gap and the bar when it is the only failing gate", () => {
+  const meta = passingMeta({ end_gap: 0.3 });
   const { docCoverage } = judge(meta);
   const msg = gateRefusal(meta, docCoverage);
-  assert.match(msg, /300/);
-  assert.match(msg, /120/);
+  assert.match(msg, /30% short/);
+  assert.match(msg, /5%/);
 });
 
 test("gateRefusal() returns median_conf's sentence first when median_conf and span_coverage both fail", () => {
@@ -156,16 +221,16 @@ test("gateRefusal() returns docCoverage's sentence first when docCoverage and le
   assert.match(msg, /tale's paragraphs matched/);
 });
 
-test("gateRefusal() returns lead_s's sentence first when lead_s and tail_s both fail", () => {
-  const meta = passingMeta({ lead_s: 200, tail_s: 300 });
+test("gateRefusal() returns lead_s's sentence first when lead_s and the ends both fail", () => {
+  const meta = passingMeta({ lead_s: 200, end_gap: 0.3 });
   const { docCoverage } = judge(meta);
   const msg = gateRefusal(meta, docCoverage);
   assert.match(msg, /before the first paragraph/);
 });
 
-test("gateRefusal() returns tail_s's sentence when it is the last remaining failing gate", () => {
-  const meta = passingMeta({ tail_s: 300 });
+test("gateRefusal() returns the start gap's sentence before the end gap's when both fail", () => {
+  const meta = passingMeta({ start_gap: 0.2, end_gap: 0.3 });
   const { docCoverage } = judge(meta);
   const msg = gateRefusal(meta, docCoverage);
-  assert.match(msg, /after the last paragraph/);
+  assert.match(msg, /starts 20% of the way/);
 });

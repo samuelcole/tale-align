@@ -21,6 +21,13 @@ export type WorkerOut = {
      * a big lead/tail means narrated content that failed to align at an end. */
     lead_s: number;
     tail_s: number;
+    /** How far into the narrative the narration starts, and how far short of
+     *  its end it stops — fractions of the narrative's paragraphs, apparatus
+     *  (endnotes, appendices, prefaces, cast lists) left out of the measure.
+     *  Null when nothing placed. Absent only from workers before 0.6.0, whose
+     *  output the gate refuses to judge. */
+    start_gap?: number | null;
+    end_gap?: number | null;
     phrases: number;
     median_conf: number;
     device: string;

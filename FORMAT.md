@@ -109,7 +109,7 @@ a rounded catalog integer here would skew every later clip boundary.
     "docCoverage": 0.96,
     "refusal": null,              // on a fail: the first missed bar, in a sentence
     "gates": { "minMedianConf": 0.8, "minCoverage": 0.9,
-               "minDocCoverage": 0.5, "maxLeadS": 125, "maxTailS": 120 }
+               "minDocCoverage": 0.5, "maxLeadS": 125, "maxEndGap": 0.05 }
   }
 }
 ```

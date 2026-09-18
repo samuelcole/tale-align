@@ -20,7 +20,6 @@ export {
   gateRefusal,
   judge,
   MAX_LEAD_S,
-  MAX_TAIL_S,
   MIN_COVERAGE,
   MIN_DOC_COVERAGE,
   MIN_MEDIAN_CONF,
