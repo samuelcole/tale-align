@@ -47,7 +47,7 @@ export type GateConstants = {
   minCoverage: number;
   minDocCoverage: number;
   maxLeadS: number;
-  maxTailS: number;
+  maxEndGap: number;
 };
 
 export type Verdict = {
