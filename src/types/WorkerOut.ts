@@ -24,7 +24,8 @@ export type WorkerOut = {
     /** How far into the narrative the narration starts, and how far short of
      *  its end it stops — fractions of the narrative's paragraphs, apparatus
      *  (endnotes, appendices, prefaces, cast lists) left out of the measure.
-     *  Absent from workers before 0.6.0; null when nothing placed. */
+     *  Null when nothing placed. Absent only from workers before 0.6.0, whose
+     *  output the gate refuses to judge. */
     start_gap?: number | null;
     end_gap?: number | null;
     phrases: number;

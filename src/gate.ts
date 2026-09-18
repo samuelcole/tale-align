@@ -55,12 +55,19 @@ import type { WorkerOut } from "./types/WorkerOut.ts";
  * (2026-09-17): the unread tails were endnotes in 49 books and volume two in
  * one.
  *
- * `MAX_TAIL_S`: audio after the last placed paragraph. Once the narration is
- * known to reach the text's end, extra audio past it is an appendix, a sequel
- * or a closing credit — Machiavelli's letters after The Prince, Typee's sequel
- * — and refusing the book for it cost 18 books that aligned at 0.91–0.97.
- * So the tail binds only for a worker that does not report where the
- * narration stops; a player simply stops with the text.
+ * There is no tail gate any more. Audio after the last placed paragraph, once
+ * the narration is known to reach the narrative's end, is an appendix, a
+ * sequel or a closing credit — Machiavelli's letters after The Prince,
+ * Typee's sequel — and refusing the book for it cost 18 books that aligned
+ * at 0.91–0.97. `tail_s` is still reported, for the log; a player simply
+ * stops with the text.
+ *
+ * And the gate refuses to *judge* output that lacks the ends measure rather
+ * than falling back to the old tail rule. Every path that runs the worker is
+ * ours — the laptop backfill, the CLI, the sandbox image the hosted path
+ * bakes it into — so a worker older than this gate is a deployment mistake,
+ * and a mistake should fail at the first book, loudly, not change verdicts
+ * quietly until someone notices.
  *
  * `lead_s` arrives already discounted for whole leading sections that placed
  * nothing (see align_worker.py): a dramatic reading's cast list is narrated,
@@ -89,18 +96,22 @@ export const MIN_DOC_COVERAGE = 0.5;
 // Keep the intended ~2-minute ceiling, with five seconds for MP3 frame
 // rounding and a final spoken title/credit before the book text begins.
 export const MAX_LEAD_S = 125;
-export const MAX_TAIL_S = 120;
 export const MAX_END_GAP = 0.05;
 
-/** The worker's own measure of where the narration starts and stops in the
- *  narrative; null for a worker that did not report it. */
-function endGaps(
-  meta: WorkerOut["meta"],
-): { start: number; end: number } | null {
-  if (meta.start_gap == null || meta.end_gap == null) {
-    return null;
+/**
+ * The worker's own measure of where the narration starts and stops in the
+ * narrative. A worker that placed nothing reports null for both, and a book
+ * that placed nothing fails every other bar anyway, so that reads as the
+ * worst case; a worker that reports neither field at all predates this gate.
+ */
+function endGaps(meta: WorkerOut["meta"]): { start: number; end: number } {
+  if (meta.start_gap === undefined || meta.end_gap === undefined) {
+    throw new Error(
+      "worker output has no start_gap/end_gap: the aligner predates gate 0.6.0 " +
+        "— rebuild whatever ran it (the sandbox image?) with the current tale-align",
+    );
   }
-  return { start: meta.start_gap, end: meta.end_gap };
+  return { start: meta.start_gap ?? 1, end: meta.end_gap ?? 1 };
 }
 
 /**
@@ -121,9 +132,8 @@ export function judge(meta: WorkerOut["meta"]): {
       meta.span_coverage >= MIN_COVERAGE &&
       docCoverage >= MIN_DOC_COVERAGE &&
       meta.lead_s <= MAX_LEAD_S &&
-      (gaps
-        ? gaps.start <= MAX_END_GAP && gaps.end <= MAX_END_GAP
-        : meta.tail_s <= MAX_TAIL_S),
+      gaps.start <= MAX_END_GAP &&
+      gaps.end <= MAX_END_GAP,
     docCoverage,
   };
 }
@@ -166,20 +176,14 @@ export function gateRefusal(
     );
   }
   const gaps = endGaps(meta);
-  if (gaps) {
-    if (gaps.start > MAX_END_GAP) {
-      return (
-        `the narration starts ${pct(gaps.start)} of the way into the text; the bar is ` +
-        `${pct(MAX_END_GAP)} — it may skip the tale's opening.`
-      );
-    }
+  if (gaps.start > MAX_END_GAP) {
     return (
-      `the narration stops ${pct(gaps.end)} short of the text's end; the bar is ` +
-      `${pct(MAX_END_GAP)} — it may cover just part of the tale.`
+      `the narration starts ${pct(gaps.start)} of the way into the text; the bar is ` +
+      `${pct(MAX_END_GAP)} — it may skip the tale's opening.`
     );
   }
   return (
-    `the recording keeps going for ${Math.round(meta.tail_s)} seconds after the last ` +
-    `paragraph it matched; the bar is ${MAX_TAIL_S} — its ending didn't line up.`
+    `the narration stops ${pct(gaps.end)} short of the text's end; the bar is ` +
+    `${pct(MAX_END_GAP)} — it may cover just part of the tale.`
   );
 }
