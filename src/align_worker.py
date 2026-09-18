@@ -303,6 +303,10 @@ VERSION, WORKER_SHA = _self_fingerprint()
 # Standard Ebooks names its files by epub:type, and tale's importer keeps the
 # file name as the section id, so the apparatus is legible from the id alone:
 # `endnotes-p12`, `appendix-2-p4`, `preface-p1`, `dramatis-personae-p3`.
+# The most unplaced leading audio the lead measure will discount as a cast
+# list or a reader's introduction. Measured cast lists run 125-300 s.
+MAX_DISCOUNT_S = 300.0
+
 APPARATUS_RE = re.compile(
     r"^(endnote|endnotes|footnote|footnotes|appendix|appendices|glossary|"
     r"notes|note|translator-note|translators-note|translators-preface|"
@@ -742,8 +746,18 @@ def main():
         # carry. A spoken intro *inside* the first placed section still counts
         # in full, which is the case the gate was built for — a book whose
         # opening chapter fails to lock must still be caught.
+        #
+        # And only a *short* one. A cast list is a few minutes; when the
+        # unplaced leading audio is longer than that it is not a cast list but
+        # an act — Edward II's recording opens with 49 minutes of Act 1 in the
+        # same section as the cast list, the act failed to lock, and the
+        # discount hid it: the book shipped with its first act silent
+        # (2026-09-17, eight plays). Past MAX_DISCOUNT_S the lead counts in
+        # full and the lead gate says what happened.
         opening = para_section(placed[0]["id"])
         skipped = bounds[opening - 1] * ratio if opening >= 1 else 0.0
+        if skipped > MAX_DISCOUNT_S:
+            skipped = 0.0
         lead = max(0.0, para_begin(placed[0]["id"]) - skipped)
         # Measure omitted audio after the final aligned word, not after the
         # beginning of its paragraph. A long final paragraph is fully narrated
