@@ -34,12 +34,33 @@ import type { WorkerOut } from "./types/WorkerOut.ts";
  * translator's preface, introduction and endnotes, so it's 61% of the document
  * yet ~100% of what's actually read. Whole-document coverage wrongly failed it.
  *
- * `MAX_LEAD_S` / `MAX_TAIL_S`: but the narration's own ends must align — the
- * first placed paragraph near the audio's start, the last near its end. A big
- * lead means content that IS narrated didn't lock (read-along would start
- * minutes in, nothing lit before), which coverage-over-a-span can't see; this
- * is what actually keeps a genuinely broken opening out. ~2 min absorbs a
- * recording's own intro and a section title without letting a real gap through.
+ * `MAX_LEAD_S`: but the narration's own opening must align — the first placed
+ * paragraph near the audio's start. A big lead means content that IS narrated
+ * didn't lock (read-along would start minutes in, nothing lit before), which
+ * coverage-over-a-span can't see; this is what actually keeps a genuinely
+ * broken opening out. ~2 min absorbs a recording's own intro and a section
+ * title without letting a real gap through. The opening is where the aligner's
+ * first lock is least certain, so this bar stays.
+ *
+ * `MAX_END_GAP`: and the narration must reach both ends of the *narrative* —
+ * start within its opening 5% of paragraphs, stop within its closing 5%.
+ * Paragraph coverage cannot tell a narrator who skipped the endnotes from a
+ * recording of volume one: Emma's reader skips 58 endnotes and places 97%,
+ * The Idiot's stops at 51% with everything before it placed. Where the
+ * narration stops in the narrative can. "Narrative" matters: the worker
+ * leaves apparatus — endnotes, appendices, prefaces, dedications, cast lists
+ * — out of the measure, because that is what a narrator legitimately skips
+ * and it sits exactly at the ends (Beowulf's translator's preface and
+ * endnotes, again). Measured over tale.fyi's 916 shipped read-alongs
+ * (2026-09-17): the unread tails were endnotes in 49 books and volume two in
+ * one.
+ *
+ * `MAX_TAIL_S`: audio after the last placed paragraph. Once the narration is
+ * known to reach the text's end, extra audio past it is an appendix, a sequel
+ * or a closing credit — Machiavelli's letters after The Prince, Typee's sequel
+ * — and refusing the book for it cost 18 books that aligned at 0.91–0.97.
+ * So the tail binds only for a worker that does not report where the
+ * narration stops; a player simply stops with the text.
  *
  * `lead_s` arrives already discounted for whole leading sections that placed
  * nothing (see align_worker.py): a dramatic reading's cast list is narrated,
@@ -69,6 +90,18 @@ export const MIN_DOC_COVERAGE = 0.5;
 // rounding and a final spoken title/credit before the book text begins.
 export const MAX_LEAD_S = 125;
 export const MAX_TAIL_S = 120;
+export const MAX_END_GAP = 0.05;
+
+/** The worker's own measure of where the narration starts and stops in the
+ *  narrative; null for a worker that did not report it. */
+function endGaps(
+  meta: WorkerOut["meta"],
+): { start: number; end: number } | null {
+  if (meta.start_gap == null || meta.end_gap == null) {
+    return null;
+  }
+  return { start: meta.start_gap, end: meta.end_gap };
+}
 
 /**
  * The verdict, in one place. `docCoverage` comes back with it because every
@@ -81,13 +114,16 @@ export function judge(meta: WorkerOut["meta"]): {
   docCoverage: number;
 } {
   const docCoverage = meta.placed / meta.paras;
+  const gaps = endGaps(meta);
   return {
     pass:
       meta.median_conf >= MIN_MEDIAN_CONF &&
       meta.span_coverage >= MIN_COVERAGE &&
       docCoverage >= MIN_DOC_COVERAGE &&
       meta.lead_s <= MAX_LEAD_S &&
-      meta.tail_s <= MAX_TAIL_S,
+      (gaps
+        ? gaps.start <= MAX_END_GAP && gaps.end <= MAX_END_GAP
+        : meta.tail_s <= MAX_TAIL_S),
     docCoverage,
   };
 }
@@ -127,6 +163,19 @@ export function gateRefusal(
     return (
       `the recording plays for ${Math.round(meta.lead_s)} seconds before the first ` +
       `paragraph it matched; the bar is ${MAX_LEAD_S} — its opening didn't line up.`
+    );
+  }
+  const gaps = endGaps(meta);
+  if (gaps) {
+    if (gaps.start > MAX_END_GAP) {
+      return (
+        `the narration starts ${pct(gaps.start)} of the way into the text; the bar is ` +
+        `${pct(MAX_END_GAP)} — it may skip the tale's opening.`
+      );
+    }
+    return (
+      `the narration stops ${pct(gaps.end)} short of the text's end; the bar is ` +
+      `${pct(MAX_END_GAP)} — it may cover just part of the tale.`
     );
   }
   return (

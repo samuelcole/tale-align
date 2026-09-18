@@ -58,8 +58,8 @@ requirements.txt.
 import atexit
 import hashlib
 import json
-import os
 import re
+import os
 import subprocess
 import sys
 import time
@@ -298,6 +298,18 @@ def _self_fingerprint():
 
 
 VERSION, WORKER_SHA = _self_fingerprint()
+
+# Paragraph ids of the parts of a book a narrator legitimately leaves unread.
+# Standard Ebooks names its files by epub:type, and tale's importer keeps the
+# file name as the section id, so the apparatus is legible from the id alone:
+# `endnotes-p12`, `appendix-2-p4`, `preface-p1`, `dramatis-personae-p3`.
+APPARATUS_RE = re.compile(
+    r"^(endnote|endnotes|appendix|appendices|glossary|notes|note|"
+    r"translator-note|translators-note|preface|introduction|foreword|"
+    r"afterword|dedication|epigraph|dramatis-personae|bibliography|index|"
+    r"colophon|loi|halftitle|halftitlepage|titlepage|imprint|copyright)"
+    r"(-|$)"
+)
 # Half precision on the GPU ~1.7x the forward pass (the run's bottleneck) with no
 # measurable hit to alignment — the emission is argmax-driven and we cast back to
 # float32 for the CPU aligner. CPU stays fp32 (no half-kernel win there).
@@ -744,6 +756,17 @@ def main():
                f"{'s' if opening > 2 else ''})" if skipped > 0 else "")
             + f", tail {tail:.0f}s"
         )
+    # The ends of the *narrative*: where the narration starts and stops among
+    # the paragraphs that are not apparatus. Section ids come from Standard
+    # Ebooks' own file names, so the apparatus is legible by prefix.
+    body = [fr for fr in real if not APPARATUS_RE.match(fr["id"])] or real
+    body_placed = [fr for fr in placed if fr in body]
+    start_gap = end_gap = None
+    if body_placed:
+        first_b = body.index(body_placed[0])
+        last_b = body.index(body_placed[-1])
+        start_gap = round(first_b / len(body), 3)
+        end_gap = round((len(body) - 1 - last_b) / len(body), 3)
     # monotonicity across all phrase begins in document order
     flat = [
         row[1]
@@ -767,6 +790,17 @@ def main():
             "meta": {
                 "paras": len(real),
                 "placed": len(placed),
+                # How far into the narrative the narration starts, and how far
+                # short of its end it stops, as fractions of the narrative's
+                # paragraphs (see gate.ts, MAX_END_GAP). Apparatus is left out
+                # of the measure on both sides: endnotes, appendices, prefaces
+                # and cast lists are the parts a narrator legitimately skips,
+                # and they sit exactly at the ends, so counting them would
+                # refuse Beowulf for its endnotes while the measure exists to
+                # refuse The Idiot for stopping at volume one. None when
+                # nothing placed.
+                "start_gap": start_gap,
+                "end_gap": end_gap,
                 "span_coverage": round(span_cov, 3),
                 "lead_s": round(lead, 1),
                 "tail_s": round(tail, 1),
