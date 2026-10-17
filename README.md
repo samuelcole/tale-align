@@ -103,7 +103,7 @@ node dist/cli.js align       --dir work/sleepy-hollow --python .venv/bin/python
 node dist/cli.js export      --dir work/sleepy-hollow --out sleepy-hollow.epub
 ```
 
-On Apple Silicon the forward pass runs on the Metal GPU (~100× realtime,
+On Apple Silicon the forward pass runs on the Metal GPU at full precision (~70× realtime,
 auto-detected); CPU aligns at ~20×.
 
 ## Configuration

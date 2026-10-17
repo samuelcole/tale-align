@@ -317,10 +317,16 @@ APPARATUS_RE = re.compile(
     r"bibliography|index|advertisement|colophon|loi|halftitle|halftitlepage|"
     r"titlepage|imprint|copyright)(-|$)"
 )
-# Half precision on the GPU ~1.7x the forward pass (the run's bottleneck) with no
-# measurable hit to alignment — the emission is argmax-driven and we cast back to
-# float32 for the CPU aligner. CPU stays fp32 (no half-kernel win there).
-HALF = DEV == "mps"
+# Full precision everywhere. Half precision on the GPU was ~1.7x faster and was
+# believed to cost nothing, because the median confidence and every gate came out
+# identical. They do — and the alignment underneath does not. Pinocchio (Gutenberg
+# 52484 against LibriVox 547, MMS_FA), 2026-10-17, phrase starts against a CPU
+# fp32 run: MPS fp16 moved 129 of 5,274 phrases by more than half a second, a
+# stretch of chapter XXIV by about a minute at confidence 0.1-0.4 where fp32
+# places it at 0.84-0.99; MPS fp32 matched the CPU on every phrase (max gap 0.0s).
+# Same verdict all three ways, so no gate can catch it. A wrong highlight is the
+# failure this tool exists to refuse; the minutes are cheaper.
+HALF = False
 
 # Both backends satisfy one contract the rest of the worker is written
 # against: `tokenizer(words)` → per-word token-id lists, and
