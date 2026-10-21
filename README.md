@@ -125,7 +125,10 @@ Two global phases, no per-section state to lose (the worker's docstring in
 whole-book CTC forward pass builds a monotone chain of word→frame anchors —
 un-narrated text (a preface, a translator's note) simply fails to lock and
 is skipped — then a bounded fine-align inside each anchor bracket recovers
-every word's begin time. Books too long to hold in RAM stream their
+every word's begin time. Because the chain strides from the first word, a
+text that opens on unread front matter takes its first lock a stride into the
+story; a lead-in walks that lock back paragraph by paragraph to where the
+reading actually starts, so the opening paragraphs have times too. Books too long to hold in RAM stream their
 emission to disk automatically.
 
 ## Reproducing an alignment

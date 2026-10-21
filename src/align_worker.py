@@ -23,6 +23,9 @@ mid-section). So we don't roll section-by-section. Instead, two global phases:
     announcement) simply fails to lock and is skipped — the next chunk
     self-corrects because it searches the same expected time. No per-section
     pointer to lose, so no runaway desync.
+  * Lead-in — when the first lock is not on word 0, walk it back paragraph by
+    paragraph over story text the chain stepped past, stopping at the first
+    paragraph that does not lock (front matter nobody reads). See LEAD_IN_REF.
   * Phase 2 — fine-align. Inside each pair of bracketing anchors the span is
     short, so a bounded forced-align can't drift; each paragraph's BEGIN is its
     first word's begin frame (read-along needs the start; the next paragraph
@@ -107,6 +110,23 @@ RESYNC_TEXT_CHUNKS = 256
 # fine-align across minutes of unrelated audio; capping loses nothing that
 # was ever placeable. 300s bounds the worst trellis near ~1 GB.
 MAX_GAP_S = 300
+# The opening, walked backward (TAL-407). Phase 1 strides from word 0, so a
+# book that opens on text nobody reads (a transcriber's note, an imprint, a
+# title page) takes its first lock at the first stride boundary that falls
+# inside the story, and phase 2 only fills *between* anchors: the story words
+# ahead of that lock were never aligned, and the reader's first paragraph had
+# no begin. Cenizas lost its first paragraph's first 63 words that way, and
+# Pinocchio its first two paragraphs. The lead-in walks back from the first
+# lock one paragraph at a time, and keeps going only while
+# each step locks as firmly as phase 1 would and joins the lock it extends:
+# LEAD_IN_REF of the already-locked words ride along in every probe and must
+# land where they already are, and no two words may sit further apart than a
+# narrator pauses. Detached words are the failure the pauses catch: a window
+# that opens before the true start lets the aligner park a text's first words
+# on any earlier speech that sounds like them, at no cost to the rest.
+LEAD_IN_REF = 8
+MAX_WORD_PAUSE_S = 3.0  # between two words of one paragraph
+MAX_PARA_PAUSE_S = 6.0  # between a paragraph's last word and the next one's first
 
 # Per-process scratch (PID-tagged so two workers never clobber each other's).
 WAVPATH = f"/tmp/_ab_{os.getpid()}.wav"
@@ -524,11 +544,80 @@ def probe(emission, ratio, f0, wi, n):
     aw = align(emission, f0, f0 + int(PROBE_S * fps), wi, min(W, wi + n))
     if len(aw) < max(8, n // 2):
         return 0.0, aw
+    return lock_score(aw, ratio), aw
+
+
+def lock_score(aw, ratio):
+    """Mean word score, discounted when the median begin-to-begin gap is not a
+    speaking rate — the phase-1 lock criterion, shared with the lead-in."""
     scores = [s for *_, s in aw]
     gaps = sorted((aw[k + 1][1] - aw[k][1]) * ratio for k in range(len(aw) - 1))
-    medgap = gaps[len(gaps) // 2]
+    medgap = gaps[len(gaps) // 2] if gaps else 0.3
     plaus = 1.0 if 0.12 <= medgap <= 0.6 else (0.5 if 0.08 <= medgap <= 0.9 else 0.15)
-    return (sum(scores) / len(scores)) * plaus, aw
+    return (sum(scores) / len(scores)) * plaus
+
+
+def lead_in(emission, ratio, w0, ref):
+    """Extend the first anchor backward over narrated text phase 1 stepped past.
+
+    `w0` is the first anchor's word and `ref` the aligned words of the lock
+    that placed it. Each step aligns the paragraph (or the part of it) that
+    ends just before the current start, together with LEAD_IN_REF locked
+    words after it, against audio that ends with those words; it is kept only
+    when its own words score at phase 1's LOCK, the locked words stay put, and
+    no pause between neighbouring words is longer than a narrator takes. The
+    walk stops at the first step that fails — narration starts after the front
+    matter, so the first paragraph nobody reads ends the opening.
+
+    Returns the new anchors, earliest first, and the frame the walk placed `w0`
+    at (the lock's own first word is its least constrained: Cenizas's opening
+    lock put it 50s early, in the LibriVox announcement). Empty when the first
+    step fails, and the first anchor then stands exactly as phase 1 left it.
+    """
+    fps = 1 / ratio
+    w_first, f_first = w0, None
+    found = []
+    while w0 > 0:
+        ws = w0 - 1
+        while ws > 0 and wpar[ws - 1] == wpar[w0 - 1]:
+            ws -= 1
+        held = {g: bf for g, bf, _ef, _sc in ref if w0 <= g < w0 + LEAD_IN_REF}
+        if len(held) < 3:
+            break
+        # The latest the step can start is the second-earliest locked word: the
+        # earliest may be a detached one. It ends 2s past the last locked word.
+        ceiling = sorted(held.values())[1]
+        hi = max(ef for g, _bf, ef, _sc in ref if g in held) + int(2 * fps)
+        # Room for the paragraph at a slow 0.8s a word, plus a margin, and never
+        # more than phase 2's trellis cap (MAX_GAP_S).
+        reach = int(min((w0 - ws) * 0.8 + 25, MAX_GAP_S) * fps)
+        best = (-1.0, None)
+        for ff in range(max(0, ceiling - reach), ceiling, int(3 * fps)):
+            aw = align(emission, ff, hi, ws, w0 + LEAD_IN_REF)
+            own = [x for x in aw if x[0] < w0]
+            if len(own) < w0 - ws:
+                continue
+            if any(
+                b[1] - a[1]
+                > (MAX_WORD_PAUSE_S if wpar[a[0]] == wpar[b[0]] else MAX_PARA_PAUSE_S)
+                * fps
+                for a, b in zip(aw, aw[1:])
+            ):
+                continue
+            drift = sorted(abs(bf - held[g]) for g, bf, _ef, _sc in aw if g in held)
+            if len(drift) < len(held) or drift[len(drift) // 2] > 0.5 * fps:
+                continue
+            sc = lock_score(own, ratio)
+            if sc > best[0]:
+                best = (sc, aw)
+        if best[0] < LOCK:
+            break
+        aw = best[1]
+        if f_first is None:
+            f_first = next(bf for g, bf, _ef, _sc in aw if g == w_first)
+        found.append((ws, aw[0][1]))
+        w0, ref = ws, aw
+    return found[::-1], f_first
 
 
 def resync_at_section(
@@ -604,6 +693,7 @@ def main():
     anchors: list[tuple[int, int]] = []  # (word_index, precise begin frame)
     wi, t, skips = 0, 0, 0
     last_good_wi, last_good_t = 0, 0
+    first_lock = None  # the aligned words of the chain's first anchor
     # A candidate needs enough audio after it to be worth probing — 30s for a
     # book, but never more than a third of a short recording. The fixed 30s
     # forbade the last half-minute of any file from hosting an anchor, which is
@@ -624,6 +714,7 @@ def main():
                 best = (sc, aw)
         if best[0] >= LOCK and best[1]:
             aw = best[1]
+            first_lock = first_lock or aw
             anchors.append((wi, aw[0][1]))
             t = aw[-1][2]  # expected-next = last aligned word's end
             wi += CHUNK
@@ -638,6 +729,7 @@ def main():
                 )
                 if recovered:
                     recovered_wi, aw = recovered
+                    first_lock = first_lock or aw
                     anchors.append((recovered_wi, aw[0][1]))
                     t = aw[-1][2]
                     wi = recovered_wi + CHUNK
@@ -651,6 +743,14 @@ def main():
                 skips = 0
     t_p1 = time.time()
     log(f"  phase 1: {len(anchors)} anchors over {W} words in {t_p1 - t_emit:.0f}s")
+    if anchors and anchors[0][0] > 0:
+        opening, f_first = lead_in(emission, ratio, anchors[0][0], first_lock)
+        if opening:
+            anchors = [*opening, (anchors[0][0], f_first), *anchors[1:]]
+            log(
+                f"  lead-in: {len(opening)} step(s) back to word {opening[0][0]}, "
+                f"{opening[0][1] * ratio:.0f}s"
+            )
 
     # -------- Phase 2: bounded fine-align between anchors --------
     byword: dict[int, tuple[int, int, float]] = {}
