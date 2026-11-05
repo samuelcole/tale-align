@@ -52,3 +52,13 @@ test("paragraphs() ignores <p> tags without an id attribute", () => {
 test("paragraphs() returns an empty array when there are no anchored paragraphs", () => {
   assert.deepEqual(paragraphs("<div>no paragraphs at all</div>"), []);
 });
+
+test("paragraphs() reads a paragraph that carries attributes after its id (TAL-474)", () => {
+  // A re-anchored body keeps the epub's own id as data-name; the anchor is still id.
+  const body =
+    '<p id="01fr--fkelxn" data-name="id00002">Erstes Kapitel</p><p id="025m--jnriz8" class="x" data-name="id00003">In Front des Herrenhauses</p>';
+  assert.deepEqual(paragraphs(body), [
+    ["01fr--fkelxn", "Erstes Kapitel"],
+    ["025m--jnriz8", "In Front des Herrenhauses"],
+  ]);
+});
