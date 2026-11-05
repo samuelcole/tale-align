@@ -5,12 +5,13 @@ import type { Fragment } from "./types/Fragment.ts";
  * input is anchored HTML carrying `<p id="…">` (the anchor contract), so these
  * ids are exactly what a reader renders and deep links use. Rendering markdown
  * or any other source format to that anchored HTML is the caller's business —
- * this function only ever reads `<p id>` tags. One- and zero-word paragraphs
+ * this function only ever reads `<p id>` tags. Attributes after the id (a
+ * re-anchored body keeps the epub's own id as `data-name`) are ignored. One- and zero-word paragraphs
  * are dropped: the aligner needs words to lock onto, and they are not worth a
  * row.
  */
 export function paragraphs(body: string): Fragment[] {
-  return [...body.matchAll(/<p id="([^"]+)">([\s\S]*?)<\/p>/g)]
+  return [...body.matchAll(/<p id="([^"]+)"(?:\s[^>]*)?>([\s\S]*?)<\/p>/g)]
     .map(
       (m): Fragment => [
         m[1],
