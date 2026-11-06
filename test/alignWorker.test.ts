@@ -138,6 +138,30 @@ const haggai = path.join(import.meta.dirname, "fixtures", "haggai-kjv");
 // the book's last chunk was never probed at all. Haggai was refused for
 // stopping a third short of its end, with all 24 of its paragraphs narrated
 // (TAL-444).
+// The same walk on the MIT wav2vec2 backend, whose CTC labels have no
+// wildcard of their own: the worker appends one as a zero log-prob column.
+test("phase 1 reaches the end of the book on wav2vec2 too", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(haggai, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { meta } = await runAligner(frags, [path.join(haggai, "haggai.mp3")], {
+    python,
+    model: "wav2vec2",
+    language: "en",
+  });
+  assert.equal(meta.model, "wav2vec2");
+  assert.equal(meta.end_gap, 0, `end_gap ${meta.end_gap}`);
+  assert.equal(
+    meta.placed,
+    frags.length,
+    `placed ${meta.placed}/${frags.length}`,
+  );
+  assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
+  assert.ok(judge(meta).pass, gateRefusal(meta, judge(meta).docCoverage));
+});
+
 test("phase 1 reaches the end of the book, in order", {
   skip,
 }, async () => {
