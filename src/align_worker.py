@@ -92,6 +92,13 @@ CHUNK_MIN = 12
 TARGET_ANCHORS = 6
 PROBE_S = 90  # phase-1 local-search probe window, in seconds
 LOCK = 0.6  # phase-1 score to accept a chunk as an anchor
+# How far before the expected-next mark a probe may start. The mark used to
+# sit up to a minute past the narration (see probe()), so the search reached
+# 25 s back to find what it had overshot. With the mark where the chunk ended,
+# reaching back over audio already placed is how repetitive text ("thus saith
+# the LORD of hosts", a refrain, a psalm's chorus) locks behind the chain. One
+# probe stride of slack is all an accurate mark needs.
+PROBE_BACK_S = 3
 # A lost whole-book chain gets one stronger, bounded way back in: compare a
 # forward window of text against the openings of the next few audio sections.
 # Section boundaries are trustworthy time landmarks even when their titles do
@@ -100,6 +107,15 @@ LOCK = 0.6  # phase-1 score to accept a chunk as an anchor
 RESYNC_LOCK = 0.75
 RESYNC_SECTIONS = 4
 RESYNC_TEXT_CHUNKS = 256
+# When that fails mid-book, the audio may be what ran ahead: a dramatic
+# reading's next file opens on its announcement and a cast list longer than
+# the section probe's window (The Master Builder's Act II: ~195 s before the
+# first line). Skipping text cannot catch up with that, since each lost streak
+# moved 315 words for 20 s of audio. So first hold the text at the last good
+# anchor and step the audio ahead, REWIND_S at a time, REWINDS times, before
+# falling back to skipping text from where the streak left it (TAL-444).
+REWIND_S = 60
+REWINDS = 10
 # Phase-2 window cap, in seconds of audio. A healthy inter-anchor gap is one
 # CHUNK (~20s); when phase 1 skipped (unnarrated apparatus, a lost thread),
 # the "gap" spans everything it skipped, and the aligner's trellis is
@@ -361,12 +377,17 @@ if MODEL == "mms_fa":
     model = bundle.get_model().to(DEV)
     tokenizer = bundle.get_tokenizer()
     aligner = bundle.get_aligner()  # CTC align stays on CPU (tiny; no MPS kernel)
+    STAR = bundle.get_dict()["*"]
 else:
     bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
     model = bundle.get_model().to(DEV)
     _labels = bundle.get_labels()  # ('-', '|', 'E', 'T', …, "'"); blank is 0
     _dic = {c: i for i, c in enumerate(_labels)}
     _SEP = _dic["|"]
+    # The wildcard, which the ASR labels lack: one more column, appended after
+    # the log-softmax at log-probability 0 — exactly how torchaudio extends
+    # MMS_FA's output for its own star token (see probe()).
+    STAR = len(_labels)
 
     def tokenizer(ws):
         # Words arrive normalized to [a-z']; the ASR labels are uppercase.
@@ -401,6 +422,10 @@ else:
             return []
         tokens = tokens[:kept]
         log_probs = torch.log_softmax(emission.unsqueeze(0), dim=-1)
+        if STAR in flat:
+            log_probs = torch.cat(
+                (log_probs, torch.zeros((*log_probs.shape[:2], 1))), dim=-1
+            )
         targets = torch.tensor([flat], dtype=torch.int32)
         frames, scores = torchaudio.functional.forced_align(
             log_probs, targets, blank=0
@@ -501,10 +526,12 @@ def build_emission():
     return emission, ratio, bounds, total / 16000
 
 
-def align(emission, f0, f1, wi, we):
+def align(emission, f0, f1, wi, we, star=False):
     """Forced-align words[wi:we] to emission[f0:f1]; return per-word
     (global_word_index, begin_frame, end_frame, score). Trims the word count so
-    the CTC targets always fit the frame budget (~1 frame per character)."""
+    the CTC targets always fit the frame budget (~1 frame per character).
+    `star` brackets the words with the wildcard token, which takes the window's
+    speech before and after them (see probe())."""
     f0, f1 = max(0, int(f0)), min(emission.shape[0], int(f1))
     we = min(we, len(words))  # callers pass a little slack (w1 + 2); don't overrun
     if f1 - f0 < 120 or we <= wi:
@@ -525,8 +552,15 @@ def align(emission, f0, f1, wi, we):
         if torch.is_tensor(region)
         else torch.from_numpy(np.asarray(region, dtype=np.float32))
     )
+    tokens = tokenizer(words[wi:we])
+    if star:
+        tokens = [[STAR], *tokens, [STAR]]
     with torch.inference_mode():
-        spans = aligner(sl, tokenizer(words[wi:we]))
+        spans = aligner(sl, tokens)
+    if star:
+        # The leading wildcard always fits; the trailing one is the first
+        # target a backend trims when the window runs short.
+        spans = spans[1:-1] if len(spans) == len(tokens) else spans[1:]
     out = []
     for k, sp in enumerate(spans):
         score = sum(s.score * (s.end - s.start) for s in sp) / max(
@@ -539,9 +573,21 @@ def align(emission, f0, f1, wi, we):
 def probe(emission, ratio, f0, wi, n):
     """Score how well words[wi:wi+n] lock onto audio starting at frame f0.
     Combines mean word score with a speaking-rate plausibility check (a wrong
-    lock crams or stretches the words to an implausible median gap)."""
+    lock crams or stretches the words to an implausible median gap).
+
+    The chunk is bracketed by the wildcard token (TAL-444). Without it, every
+    frame of the 90 s window had to belong to the chunk's own words, so CTC
+    stretched them over the speech either side: the chunk's last words ran on
+    across the narration that follows (in Malachi the first lock's words end
+    near 26 s and its last word "ended" at 73 s), and phase 1 set its
+    expected-next mark at that end. Later probes started past the narration
+    they were looking for, chunks missed, the chain drifted or false-locked on
+    repetitive text, and long books lost whole sections. The smear also
+    inflated the median gap, so the plausibility check sank correct locks. The
+    wildcard takes the window's other speech, and the words land where they
+    are said."""
     fps = 1 / ratio
-    aw = align(emission, f0, f0 + int(PROBE_S * fps), wi, min(W, wi + n))
+    aw = align(emission, f0, f0 + int(PROBE_S * fps), wi, min(W, wi + n), star=True)
     if len(aw) < max(8, n // 2):
         return 0.0, aw
     return lock_score(aw, ratio), aw
@@ -693,6 +739,7 @@ def main():
     anchors: list[tuple[int, int]] = []  # (word_index, precise begin frame)
     wi, t, skips = 0, 0, 0
     last_good_wi, last_good_t = 0, 0
+    lost, rewinds, frontier = False, 0, None  # see REWIND_S
     first_lock = None  # the aligned words of the chain's first anchor
     # A candidate needs enough audio after it to be worth probing — 30s for a
     # book, but never more than a third of a short recording. The fixed 30s
@@ -702,12 +749,21 @@ def main():
     # remaining candidate falls in the forbidden tail — the loop then runs to
     # completion without probing even once, leaving one anchor and a 0.00
     # median. Audio of 90s or more is unaffected (a third of it exceeds 30s).
+    #
+    # And never more than the chunk itself needs (TAL-444). The book's last
+    # chunk starts within seconds of the end of the narration, so a fixed
+    # floor skipped every one of its candidates and the ending never got an
+    # anchor: Haggai's closing paragraph went unplaced with 27 s of audio
+    # left. A chunk needs at least its words at the fastest plausible pace
+    # (lock_score()'s 0.12 s floor); align() trims any that do not fit, and
+    # probe() refuses a chunk left too short to judge.
     tail_room = min(int(30 * fps), F // 3)
     while wi < W - 5:
         best = (-1.0, None)  # (score, aligned_words)
-        for df in range(int(-25 * fps), int(75 * fps), int(3 * fps)):
+        room = min(tail_room, int(min(CHUNK, W - wi) * 0.12 * fps))
+        for df in range(int(-PROBE_BACK_S * fps), int(75 * fps), int(3 * fps)):
             ff = t + df
-            if ff < 0 or ff + tail_room >= F:
+            if ff < 0 or ff + room >= F:
                 continue
             sc, aw = probe(emission, ratio, ff, wi, CHUNK)
             if sc > best[0]:
@@ -720,13 +776,19 @@ def main():
             wi += CHUNK
             skips = 0
             last_good_wi, last_good_t = wi, t
+            lost, rewinds, frontier = False, 0, None
         else:
             wi += CHUNK
             skips += 1
             if skips > 6:  # lost the thread — try a structural re-lock
-                recovered = resync_at_section(
-                    emission, ratio, bounds, last_good_wi, last_good_t
+                # Its inputs are fixed until the next lock, so one try per
+                # loss is the whole answer.
+                recovered = (
+                    resync_at_section(emission, ratio, bounds, last_good_wi, last_good_t)
+                    if not lost
+                    else None
                 )
+                lost = True
                 if recovered:
                     recovered_wi, aw = recovered
                     first_lock = first_lock or aw
@@ -734,10 +796,20 @@ def main():
                     t = aw[-1][2]
                     wi = recovered_wi + CHUNK
                     last_good_wi, last_good_t = wi, t
+                    lost, rewinds, frontier = False, 0, None
                     log(
                         f"  phase 1: re-locked at word {recovered_wi}/{W}, "
                         f"{aw[0][1] * ratio:.0f}s"
                     )
+                elif last_good_wi > 0 and rewinds < REWINDS:
+                    # Mid-book only: before the first lock the unread text
+                    # is front matter, and skipping it is right.
+                    rewinds += 1
+                    frontier = frontier or wi
+                    wi = last_good_wi
+                    t = last_good_t + rewinds * int(REWIND_S * fps)
+                elif frontier:
+                    wi, t, frontier = frontier, last_good_t + int(20 * fps), None
                 else:
                     t += int(20 * fps)
                 skips = 0

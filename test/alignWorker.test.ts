@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
+import { gateRefusal, judge } from "../src/gate.ts";
 import { runAligner } from "../src/runAligner.ts";
 import type { Fragment } from "../src/types/Fragment.ts";
 
@@ -49,4 +50,135 @@ test("the opening story paragraphs before phase 1's first lock are aligned", {
     Math.abs((begin("i-p3") ?? 0) - 47.45) < 0.1,
     `i-p3 ${begin("i-p3")}`,
   );
+});
+
+const princess = path.join(
+  import.meta.dirname,
+  "fixtures",
+  "little-princess-opening",
+);
+
+// A Little Princess as tale.fyi holds it: Burnett's preface (not read on this
+// recording), then chapter I's first fourteen paragraphs, against the first
+// 281 seconds of LibriVox's first track (public domain, re-encoded mono 24
+// kbps). After the announcement and chapter title, the narrator starts "Once
+// on a dark winter's day" at 15s. An unbracketed phase-1 probe for words
+// 720 onward pulled its chunk back over the announcement and locked at 4s,
+// ahead of everything before it: the read-along began at chapter-1-p4's fourth
+// phrase, and the chapter's first paragraphs had no timing (TAL-407).
+test("phase 1 does not lock a later chunk inside the announcement", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(princess, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { phrases } = await runAligner(
+    frags,
+    [path.join(princess, "opening.mp3")],
+    { python, model: "mms_fa", language: "en" },
+  );
+  const [first] = Object.keys(phrases);
+  assert.equal(first, "chapter-1-p2", `first timed paragraph ${first}`);
+  const begin = phrases["chapter-1-p2"]?.find(([i]) => i === 0)?.[1] ?? 0;
+  assert.ok(Math.abs(begin - 15) < 1, `chapter-1-p2 begins ${begin}`);
+  for (const id of ["chapter-1-p3", "chapter-1-p4"]) {
+    assert.ok(
+      phrases[id]?.some(([i]) => i === 0),
+      `${id} has no phrase 0`,
+    );
+  }
+});
+
+const actBreak = path.join(
+  import.meta.dirname,
+  "fixtures",
+  "master-builder-act-break",
+);
+
+// The Master Builder (Archer's translation) across its Act I/II file break:
+// the last three minutes of LibriVox's dramatic reading of Act I, then the
+// first five of Act II (public domain, re-encoded mono 24 kbps). Act II's file
+// opens on its announcement and a cast list, about two minutes before the
+// first line. That is longer than the section re-lock's probe window, and
+// skipping text could not catch up: each lost streak moved 315 words for 20
+// s of audio, so the walk ran off the end of the text with most of the
+// book's audio unread. The full book was refused at 36% of its
+// paragraphs (TAL-444).
+test("phase 1 finds the text again after a long cast list", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(actBreak, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { meta } = await runAligner(
+    frags,
+    [
+      path.join(actBreak, "act-1-end.mp3"),
+      path.join(actBreak, "act-2-start.mp3"),
+    ],
+    { python, model: "mms_fa", language: "en" },
+  );
+  assert.equal(meta.end_gap, 0, `end_gap ${meta.end_gap}`);
+  assert.equal(
+    meta.placed,
+    frags.length,
+    `placed ${meta.placed}/${frags.length}`,
+  );
+  assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
+});
+
+const haggai = path.join(import.meta.dirname, "fixtures", "haggai-kjv");
+
+// Haggai, King James Version, as tale.fyi holds it: Standard Ebooks' text
+// against LibriVox's complete reading (public domain, re-encoded mono 24 kbps).
+// Each phase-1 probe forced its 45 words into a 90 s window with nothing to
+// take the speech around them, so CTC stretched the chunk's last words across
+// the narration that followed; the walk set its expected-next mark at that
+// smeared end, up to a minute late, so later chunks missed or locked late, and
+// the book's last chunk was never probed at all. Haggai was refused for
+// stopping a third short of its end, with all 24 of its paragraphs narrated
+// (TAL-444).
+// The same walk on the MIT wav2vec2 backend, whose CTC labels have no
+// wildcard of their own: the worker appends one as a zero log-prob column.
+test("phase 1 reaches the end of the book on wav2vec2 too", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(haggai, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { meta } = await runAligner(frags, [path.join(haggai, "haggai.mp3")], {
+    python,
+    model: "wav2vec2",
+    language: "en",
+  });
+  assert.equal(meta.model, "wav2vec2");
+  assert.equal(meta.end_gap, 0, `end_gap ${meta.end_gap}`);
+  assert.equal(
+    meta.placed,
+    frags.length,
+    `placed ${meta.placed}/${frags.length}`,
+  );
+  assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
+  assert.ok(judge(meta).pass, gateRefusal(meta, judge(meta).docCoverage));
+});
+
+test("phase 1 reaches the end of the book, in order", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(haggai, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { meta } = await runAligner(frags, [path.join(haggai, "haggai.mp3")], {
+    python,
+    model: "mms_fa",
+    language: "en",
+  });
+  assert.equal(meta.end_gap, 0, `end_gap ${meta.end_gap}`);
+  assert.equal(
+    meta.placed,
+    frags.length,
+    `placed ${meta.placed}/${frags.length}`,
+  );
+  assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
+  assert.ok(judge(meta).pass, gateRefusal(meta, judge(meta).docCoverage));
 });
