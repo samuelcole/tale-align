@@ -127,6 +127,47 @@ test("phase 1 finds the text again after a long cast list", {
   assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
 });
 
+const census = path.join(import.meta.dirname, "fixtures", "numbers-census");
+
+// Numbers, King James Version, as tale.fyi holds it: Standard Ebooks' text
+// through chapter 9 against three cuts of LibriVox's reading (public domain,
+// re-encoded mono 24 kbps): the first 520 seconds of file 1, then the first
+// 150 of files 2 and 5. Chapter 1's census is twelve near-identical
+// paragraphs, so phase 1 loses the thread around 438s. Files 2 and 5 both
+// open on clean text after their announcements, file 2 at 0.94 and file 5 at
+// 0.98, and the mid-book re-lock took the stronger: it jumped to chapter 9
+// and skipped chapters 3 to 8. The full book was refused at 87% of its
+// paragraphs (TAL-500).
+test("a mid-book re-lock takes the earliest strong file, not the strongest", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(census, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { phrases } = await runAligner(
+    frags,
+    [
+      path.join(census, "file-1-census.mp3"),
+      path.join(census, "file-2-start.mp3"),
+      path.join(census, "file-5-start.mp3"),
+    ],
+    { python, model: "mms_fa", language: "en" },
+  );
+  // Numbers 3:2, "These are the names of the sons of Aaron", 43 seconds into
+  // file 2 (which starts at 520s here).
+  const [, begin, conf] = phrases["2xt--g18zci"]?.find(([i]) => i === 0) ?? [];
+  assert.ok(Math.abs((begin ?? 0) - 562.9) < 1, `3:2 begins ${begin}`);
+  assert.ok((conf ?? 0) >= 0.8, `3:2 confidence ${conf}`);
+  // And the paragraphs after it follow in order.
+  const starts = ["2z9--n4jqke", "30q--lm4jox", "326--s0kwzf"].map(
+    (id) => phrases[id]?.find(([i]) => i === 0)?.[1] ?? 0,
+  );
+  assert.ok(
+    starts.every((s, i) => s > (i ? starts[i - 1] : (begin ?? 0))),
+    `3:3-3:7 begin ${starts}`,
+  );
+});
+
 const haggai = path.join(import.meta.dirname, "fixtures", "haggai-kjv");
 
 // Haggai, King James Version, as tale.fyi holds it: Standard Ebooks' text
