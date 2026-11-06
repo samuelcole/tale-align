@@ -696,13 +696,14 @@ def resync_at_section(
     ][:RESYNC_SECTIONS]
     text_end = min(W - 5, text_start + RESYNC_TEXT_CHUNKS * CHUNK)
 
-    # At the opening, prefer the earliest audio boundary with an independently
-    # strong lock. Otherwise a slightly stronger later chapter can eclipse valid
-    # earlier files (Worst Journey: file 3 eclipsed files 1 and 2, leaving a
-    # 51-minute lead). Once a chain exists, retain the original highest-score
-    # lookahead: changing that choice needlessly moved already-good interior
-    # anchors in regression books. Both paths keep the stricter recovery
-    # threshold and monotonicity on both axes.
+    # Take the earliest audio boundary with an independently strong lock.
+    # A slightly stronger later file otherwise eclipses valid earlier ones and
+    # the walk skips every file in between: at the opening, Worst Journey's
+    # file 3 eclipsed files 1 and 2 (a 51-minute lead); mid-book, Numbers lost
+    # the thread in chapter 1's census and file 5 (0.98) eclipsed file 2
+    # (0.94), skipping chapters 3 to 8 (TAL-500). Every candidate already
+    # clears the stricter recovery threshold, and both axes stay monotone.
+    # The highest score is only the fallback when no file clears it.
     overall = (-1.0, None, None)  # (score, word index, aligned words)
     for section_start in section_starts:
         best = (-1.0, None, None)  # (score, word index, aligned words)
@@ -714,7 +715,7 @@ def resync_at_section(
             if sc > best[0]:
                 best = (sc, candidate, aw)
         score, candidate, aw = best
-        if opening and score >= RESYNC_LOCK and candidate is not None and aw:
+        if score >= RESYNC_LOCK and candidate is not None and aw:
             return candidate, aw
         if score > overall[0]:
             overall = best
