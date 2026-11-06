@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
+import { gateRefusal, judge } from "../src/gate.ts";
 import { runAligner } from "../src/runAligner.ts";
 import type { Fragment } from "../src/types/Fragment.ts";
 
@@ -49,4 +50,36 @@ test("the opening story paragraphs before phase 1's first lock are aligned", {
     Math.abs((begin("i-p3") ?? 0) - 47.45) < 0.1,
     `i-p3 ${begin("i-p3")}`,
   );
+});
+
+const haggai = path.join(import.meta.dirname, "fixtures", "haggai-kjv");
+
+// Haggai, King James Version, as tale.fyi holds it: Standard Ebooks' text
+// against LibriVox's complete reading (public domain, re-encoded mono 24 kbps).
+// Each phase-1 probe forced its 45 words into a 90 s window with nothing to
+// take the speech around them, so CTC stretched the chunk's last words across
+// the narration that followed; the walk set its expected-next mark at that
+// smeared end, up to a minute late, so later chunks missed or locked late, and
+// the book's last chunk was never probed at all. Haggai was refused for
+// stopping a third short of its end, with all 24 of its paragraphs narrated
+// (TAL-444).
+test("phase 1 reaches the end of the book, in order", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(haggai, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { meta } = await runAligner(frags, [path.join(haggai, "haggai.mp3")], {
+    python,
+    model: "mms_fa",
+    language: "en",
+  });
+  assert.equal(meta.end_gap, 0, `end_gap ${meta.end_gap}`);
+  assert.equal(
+    meta.placed,
+    frags.length,
+    `placed ${meta.placed}/${frags.length}`,
+  );
+  assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
+  assert.ok(judge(meta).pass, gateRefusal(meta, judge(meta).docCoverage));
 });
