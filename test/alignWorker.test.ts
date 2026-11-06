@@ -52,6 +52,43 @@ test("the opening story paragraphs before phase 1's first lock are aligned", {
   );
 });
 
+const princess = path.join(
+  import.meta.dirname,
+  "fixtures",
+  "little-princess-opening",
+);
+
+// A Little Princess as tale.fyi holds it: Burnett's preface (not read on this
+// recording), then chapter I's first fourteen paragraphs, against the first
+// 281 seconds of LibriVox's first track (public domain, re-encoded mono 24
+// kbps). After the announcement and chapter title, the narrator starts "Once
+// on a dark winter's day" at 15s. An unbracketed phase-1 probe for words
+// 720 onward pulled its chunk back over the announcement and locked at 4s,
+// ahead of everything before it: the read-along began at chapter-1-p4's fourth
+// phrase, and the chapter's first paragraphs had no timing (TAL-407).
+test("phase 1 does not lock a later chunk inside the announcement", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(princess, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { phrases } = await runAligner(
+    frags,
+    [path.join(princess, "opening.mp3")],
+    { python, model: "mms_fa", language: "en" },
+  );
+  const [first] = Object.keys(phrases);
+  assert.equal(first, "chapter-1-p2", `first timed paragraph ${first}`);
+  const begin = phrases["chapter-1-p2"]?.find(([i]) => i === 0)?.[1] ?? 0;
+  assert.ok(Math.abs(begin - 15) < 1, `chapter-1-p2 begins ${begin}`);
+  for (const id of ["chapter-1-p3", "chapter-1-p4"]) {
+    assert.ok(
+      phrases[id]?.some(([i]) => i === 0),
+      `${id} has no phrase 0`,
+    );
+  }
+});
+
 const haggai = path.join(import.meta.dirname, "fixtures", "haggai-kjv");
 
 // Haggai, King James Version, as tale.fyi holds it: Standard Ebooks' text
