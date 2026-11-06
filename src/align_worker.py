@@ -107,6 +107,11 @@ PROBE_BACK_S = 3
 RESYNC_LOCK = 0.75
 RESYNC_SECTIONS = 4
 RESYNC_TEXT_CHUNKS = 256
+# How far below the best file a mid-book re-lock's earlier file may score and
+# still win (see resync_at_section). Clean section openings measured 0.94 to
+# 0.98 on Numbers; a lock just over RESYNC_LOCK against a clean one is not
+# close, and a later clean file then wins as before (TAL-500).
+RESYNC_MARGIN = 0.1
 # When that fails mid-book, the audio may be what ran ahead: a dramatic
 # reading's next file opens on its announcement and a cast list longer than
 # the section probe's window (The Master Builder's Act II: ~195 s before the
@@ -696,15 +701,17 @@ def resync_at_section(
     ][:RESYNC_SECTIONS]
     text_end = min(W - 5, text_start + RESYNC_TEXT_CHUNKS * CHUNK)
 
-    # Take the earliest audio boundary with an independently strong lock.
-    # A slightly stronger later file otherwise eclipses valid earlier ones and
-    # the walk skips every file in between: at the opening, Worst Journey's
-    # file 3 eclipsed files 1 and 2 (a 51-minute lead); mid-book, Numbers lost
-    # the thread in chapter 1's census and file 5 (0.98) eclipsed file 2
-    # (0.94), skipping chapters 3 to 8 (TAL-500). Every candidate already
-    # clears the stricter recovery threshold, and both axes stay monotone.
-    # The highest score is only the fallback when no file clears it.
-    overall = (-1.0, None, None)  # (score, word index, aligned words)
+    # Prefer the earliest audio boundary with a strong lock: a slightly
+    # stronger later file otherwise eclipses valid earlier ones and the walk
+    # skips every file in between. At the opening, Worst Journey's file 3
+    # eclipsed files 1 and 2 (a 51-minute lead), so the first file clearing
+    # the bar wins outright. Mid-book, Numbers lost the thread in chapter 1's
+    # census and file 5 (0.98) eclipsed file 2 (0.94), skipping chapters 3 to
+    # 8 (TAL-500). There the text window spans thousands of words and can
+    # hold repeated passages, so an earlier file must also come within
+    # RESYNC_MARGIN of the best: a coincidental lock just over the bar still
+    # loses to a clean one later. Both axes stay monotone either way.
+    found = []  # (score, word index, aligned words), in audio order
     for section_start in section_starts:
         best = (-1.0, None, None)  # (score, word index, aligned words)
         # Begin just before the file boundary so a clipped word or a tiny
@@ -716,13 +723,18 @@ def resync_at_section(
                 best = (sc, candidate, aw)
         score, candidate, aw = best
         if score >= RESYNC_LOCK and candidate is not None and aw:
-            return candidate, aw
-        if score > overall[0]:
-            overall = best
-    score, candidate, aw = overall
-    if score >= RESYNC_LOCK and candidate is not None and aw:
-        return candidate, aw
-    return None
+            if opening:
+                return candidate, aw
+            found.append(best)
+    if not found:
+        return None
+    log(
+        "  phase 1: re-lock candidates "
+        + ", ".join(f"word {c} {s:.3f}" for s, c, _ in found)
+    )
+    top = max(s for s, _, _ in found)
+    _, candidate, aw = next(f for f in found if f[0] >= top - RESYNC_MARGIN)
+    return candidate, aw
 
 
 def main():
