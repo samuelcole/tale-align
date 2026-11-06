@@ -107,6 +107,15 @@ PROBE_BACK_S = 3
 RESYNC_LOCK = 0.75
 RESYNC_SECTIONS = 4
 RESYNC_TEXT_CHUNKS = 256
+# When that fails mid-book, the audio may be what ran ahead: a dramatic
+# reading's next file opens on its announcement and a cast list longer than
+# the section probe's window (The Master Builder's Act II: ~195 s before the
+# first line). Skipping text cannot catch up with that, since each lost streak
+# moved 315 words for 20 s of audio. So first hold the text at the last good
+# anchor and step the audio ahead, REWIND_S at a time, REWINDS times, before
+# falling back to skipping text from where the streak left it (TAL-444).
+REWIND_S = 60
+REWINDS = 10
 # Phase-2 window cap, in seconds of audio. A healthy inter-anchor gap is one
 # CHUNK (~20s); when phase 1 skipped (unnarrated apparatus, a lost thread),
 # the "gap" spans everything it skipped, and the aligner's trellis is
@@ -730,6 +739,7 @@ def main():
     anchors: list[tuple[int, int]] = []  # (word_index, precise begin frame)
     wi, t, skips = 0, 0, 0
     last_good_wi, last_good_t = 0, 0
+    lost, rewinds, frontier = False, 0, None  # see REWIND_S
     first_lock = None  # the aligned words of the chain's first anchor
     # A candidate needs enough audio after it to be worth probing — 30s for a
     # book, but never more than a third of a short recording. The fixed 30s
@@ -766,13 +776,19 @@ def main():
             wi += CHUNK
             skips = 0
             last_good_wi, last_good_t = wi, t
+            lost, rewinds, frontier = False, 0, None
         else:
             wi += CHUNK
             skips += 1
             if skips > 6:  # lost the thread — try a structural re-lock
-                recovered = resync_at_section(
-                    emission, ratio, bounds, last_good_wi, last_good_t
+                # Its inputs are fixed until the next lock, so one try per
+                # loss is the whole answer.
+                recovered = (
+                    resync_at_section(emission, ratio, bounds, last_good_wi, last_good_t)
+                    if not lost
+                    else None
                 )
+                lost = True
                 if recovered:
                     recovered_wi, aw = recovered
                     first_lock = first_lock or aw
@@ -780,10 +796,20 @@ def main():
                     t = aw[-1][2]
                     wi = recovered_wi + CHUNK
                     last_good_wi, last_good_t = wi, t
+                    lost, rewinds, frontier = False, 0, None
                     log(
                         f"  phase 1: re-locked at word {recovered_wi}/{W}, "
                         f"{aw[0][1] * ratio:.0f}s"
                     )
+                elif last_good_wi > 0 and rewinds < REWINDS:
+                    # Mid-book only: before the first lock the unread text
+                    # is front matter, and skipping it is right.
+                    rewinds += 1
+                    frontier = frontier or wi
+                    wi = last_good_wi
+                    t = last_good_t + rewinds * int(REWIND_S * fps)
+                elif frontier:
+                    wi, t, frontier = frontier, last_good_t + int(20 * fps), None
                 else:
                     t += int(20 * fps)
                 skips = 0

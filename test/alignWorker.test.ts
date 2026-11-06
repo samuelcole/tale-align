@@ -89,6 +89,44 @@ test("phase 1 does not lock a later chunk inside the announcement", {
   }
 });
 
+const actBreak = path.join(
+  import.meta.dirname,
+  "fixtures",
+  "master-builder-act-break",
+);
+
+// The Master Builder (Archer's translation) across its Act I/II file break:
+// the last three minutes of LibriVox's dramatic reading of Act I, then the
+// first five of Act II (public domain, re-encoded mono 24 kbps). Act II's file
+// opens on its announcement and a cast list, about two minutes before the
+// first line. That is longer than the section re-lock's probe window, and
+// skipping text could not catch up: each lost streak moved 315 words for 20
+// s of audio, so the walk ran off the end of the text with most of the
+// book's audio unread. The full book was refused at 36% of its
+// paragraphs (TAL-444).
+test("phase 1 finds the text again after a long cast list", {
+  skip,
+}, async () => {
+  const frags = JSON.parse(
+    await readFile(path.join(actBreak, "frags.json"), "utf8"),
+  ) as Fragment[];
+  const { meta } = await runAligner(
+    frags,
+    [
+      path.join(actBreak, "act-1-end.mp3"),
+      path.join(actBreak, "act-2-start.mp3"),
+    ],
+    { python, model: "mms_fa", language: "en" },
+  );
+  assert.equal(meta.end_gap, 0, `end_gap ${meta.end_gap}`);
+  assert.equal(
+    meta.placed,
+    frags.length,
+    `placed ${meta.placed}/${frags.length}`,
+  );
+  assert.equal(meta.inversions, 0, `inversions ${meta.inversions}`);
+});
+
 const haggai = path.join(import.meta.dirname, "fixtures", "haggai-kjv");
 
 // Haggai, King James Version, as tale.fyi holds it: Standard Ebooks' text
