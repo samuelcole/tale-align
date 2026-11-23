@@ -16,6 +16,11 @@
       "semicolons": "always"
     }
   },
+  "markdown": {
+    "formatter": {
+      "enabled": false
+    }
+  },
   "assist": {
     "actions": {
       "source": {
