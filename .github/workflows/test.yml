@@ -20,6 +20,10 @@ jobs:
       # Format + lint, including the no-`let` / no-parameter-reassign rules
       # the source's immutability convention rests on.
       - run: pnpm lint
+      # remark formats README.md and FORMAT.md; like the lock check below, a
+      # file it would rewrite can't merge.
+      - run: pnpm exec remark . --frail --quiet --output
+      - run: git diff --exit-code -- '*.md'
       - run: pnpm build
       - run: pnpm test:coverage
       # The python half is locked too, because torchaudio *is* the model (see

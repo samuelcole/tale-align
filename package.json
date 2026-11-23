@@ -39,8 +39,8 @@
     "build": "tsc && cp src/align_worker.py dist/align_worker.py",
     "py:lock": "uv lock && uv export --format requirements.txt --no-emit-project --no-annotate -o requirements.lock",
     "prepublishOnly": "npm run build",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "biome check . && remark . --frail --quiet",
+    "lint:fix": "biome check --write . && remark . --frail --quiet --output",
     "test": "node --test test/*.test.ts",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.ts"
   },
@@ -52,6 +52,8 @@
     "@biomejs/biome": "^2.5.7",
     "@types/adm-zip": "^0.5",
     "@types/node": "^24",
+    "remark-cli": "^12.0.1",
+    "remark-gfm": "^4.0.1",
     "typescript": "^5.9.0"
   }
 }
