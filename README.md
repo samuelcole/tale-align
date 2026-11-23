@@ -26,13 +26,13 @@ choice is honesty about failure — a narrated edition that drifts from the
 text, a recording whose opening never locks — so every alignment is judged
 by five quality gates before it ships:
 
-| gate | bar | catches |
-| --- | --- | --- |
-| median confidence | ≥ 0.8 | a genuinely wrong alignment |
-| span coverage | ≥ 0.9 | holes between the first and last placed paragraph |
-| document coverage | ≥ 0.5 | the "confidently wrong" partial lock |
-| lead | ≤ 125s | a broken opening (whole unplaced leading sections — a cast list, a reader's intro — are discounted first) |
-| tail | ≤ 120s | a broken ending |
+| gate              | bar    | catches                                                                                                   |
+| ----------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| median confidence | ≥ 0.8  | a genuinely wrong alignment                                                                               |
+| span coverage     | ≥ 0.9  | holes between the first and last placed paragraph                                                         |
+| document coverage | ≥ 0.5  | the "confidently wrong" partial lock                                                                      |
+| lead              | ≤ 125s | a broken opening (whole unplaced leading sections — a cast list, a reader's intro — are discounted first) |
+| tail              | ≤ 120s | a broken ending                                                                                           |
 
 A refusal is a first-class result: the verdict (and the bar it missed, in a
 sentence) is recorded in the interchange document, and `export` will not
@@ -112,11 +112,11 @@ Operational knobs live in `tale-align/config`, read from the environment
 once at load (the gates are deliberately not configuration — see
 `src/gate.ts`):
 
-| variable | default | what |
-| --- | --- | --- |
-| `ALIGN_PYTHON` | `python3` | the aligner venv's interpreter |
-| `TALE_ALIGN_STREAM_SECS` | `54000` | audio length above which the worker streams its emission to disk instead of RAM — tune to your memory |
-| `TALE_ALIGN_UA` | `tale-align/<version> (+repo url)` | the user-agent on every fetch against gutenberg.org / librivox.org / archive.org — put your own name on your traffic |
+| variable                 | default                            | what                                                                                                                 |
+| ------------------------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ALIGN_PYTHON`           | `python3`                          | the aligner venv's interpreter                                                                                       |
+| `TALE_ALIGN_STREAM_SECS` | `54000`                            | audio length above which the worker streams its emission to disk instead of RAM — tune to your memory                |
+| `TALE_ALIGN_UA`          | `tale-align/<version> (+repo url)` | the user-agent on every fetch against gutenberg.org / librivox.org / archive.org — put your own name on your traffic |
 
 ## How the aligner works
 
@@ -205,16 +205,17 @@ English label set. See Licensing for what that opt-in costs.
 ## Licensing
 
 The **code** is MIT, and so is the **default pipeline end to end**: the
-default acoustic backend is `WAV2VEC2_ASR_BASE_960H` (MIT, English-only,
-~360MB), so out of the box nothing in tale-align restricts commercial use.
+default acoustic backend is `WAV2VEC2_ASR_BASE_960H` (MIT,
+English-only, ~360MB), so out of the box nothing in tale-align restricts
+commercial use.
 
 No model weights ship in this repo. Each backend auto-downloads from
 torchaudio's own hosting on first use:
 
-| backend | license | scope | weights |
-| --- | --- | --- | --- |
-| `wav2vec2` (default) | MIT | English | ~360MB |
-| `mms_fa` (`--model mms_fa`) | **CC-BY-NC 4.0** | 1,100+ languages, trained for alignment, usually stronger | ~1.2GB |
+| backend                     | license          | scope                                                     | weights |
+| --------------------------- | ---------------- | --------------------------------------------------------- | ------- |
+| `wav2vec2` (default)        | MIT              | English                                                   | ~360MB  |
+| `mms_fa` (`--model mms_fa`) | **CC-BY-NC 4.0** | 1,100+ languages, trained for alignment, usually stronger | ~1.2GB  |
 
 Choosing `--model mms_fa` is choosing Meta's non-commercial license — a
 deliberate, per-run opt-in, never a default you inherit. Be honest with

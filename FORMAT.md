@@ -3,13 +3,13 @@
 One JSON file — `tale-align.json` — travels through the pipeline with a work
 directory. Each stage adds its section and leaves the others alone:
 
-| stage | command | writes |
-| --- | --- | --- |
-| 1 · acquire | `fetch-text` | `book.epub` on disk; `book` (identity + provenance); deletes stale `text`/`alignment` |
-| 1 · acquire | `fetch-audio` | `audio/*.mp3` on disk; `audio`; deletes stale `alignment` |
-| 1 · acquire | `prepare` | both halves, from local files |
-| 2 · align | `align` | `text` (anchored from `book.epub` when not already present) and `alignment` |
-| 3 · deliver | `export` | nothing — it only reads |
+| stage       | command       | writes                                                                                |
+| ----------- | ------------- | ------------------------------------------------------------------------------------- |
+| 1 · acquire | `fetch-text`  | `book.epub` on disk; `book` (identity + provenance); deletes stale `text`/`alignment` |
+| 1 · acquire | `fetch-audio` | `audio/*.mp3` on disk; `audio`; deletes stale `alignment`                             |
+| 1 · acquire | `prepare`     | both halves, from local files                                                         |
+| 2 · align   | `align`       | `text` (anchored from `book.epub` when not already present) and `alignment`           |
+| 3 · deliver | `export`      | nothing — it only reads                                                               |
 
 Stage 1's hand-off is deliberately just standard formats — an epub and
 ordered MP3s — plus provenance in `book`; any source adapter can produce
